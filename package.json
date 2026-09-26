@@ -33,6 +33,7 @@
     "vitest": "^5.0.2"
   },
   "dependencies": {
-    "octokit": "^5.0.5"
+    "octokit": "^5.0.5",
+    "simple-git": "^4.0.2"
   }
 }
