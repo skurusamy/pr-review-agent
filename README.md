@@ -18,3 +18,7 @@ npm test
 ```
 
 Copy `.env.example` to `.env` and fill in `ANTHROPIC_API_KEY` and `GITHUB_TOKEN` for local runs.
+
+## Testing fixtures
+
+This repo keeps a standing test PR with real inline review comments (some with replies, some outdated) that later wayfinder tickets use to verify against a live PR rather than only fixtures.
