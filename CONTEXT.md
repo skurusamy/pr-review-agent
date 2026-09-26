@@ -21,12 +21,12 @@ Running the repo's own lint, typecheck, and test scripts against the local check
 _Avoid_: CI rerun, checks, verification
 
 **Draft Reply**:
-A pending, unsubmitted GitHub review comment the agent creates in reply to an original review comment — used for a `not-a-bug` verdict, and as the fallback when a `bug` verdict exhausts its Fix Attempts without passing the Validation Gate.
-_Avoid_: pending comment, response
+A pending, unsubmitted GitHub review comment the agent creates at the same file and line as an original review comment — used for a `not-a-bug` verdict, and as the fallback when a `bug` verdict exhausts its Fix Attempts without passing the Validation Gate. GitHub allows only one pending review per PR, so every Draft Reply from one Review Run lands in a single shared pending review, not a reply nested in the original comment's thread (GitHub's API has no way to make a comment both pending and a reply).
+_Avoid_: pending comment, response, reply
 
 **Agent Marker**:
-An HTML-comment tag embedded in every Draft Reply body, used to detect on a later Review Run that a comment was already handled so it isn't reprocessed.
-_Avoid_: signature, flag
+An HTML comment embedding the specific original comment's id (`<!-- pr-review-agent:comment-<id> -->`), placed in every Draft Reply body. Since a Draft Reply can't be a structural reply, idempotency is checked by scanning comment bodies for this exact marker rather than by reply/thread structure.
+_Avoid_: signature, flag, generic tag
 
 **Dry Run**:
 A mode of a Review Run that computes every Verdict and Fix Attempt normally but skips the actual git push and GitHub API writes, printing what it would have done instead.
