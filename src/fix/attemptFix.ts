@@ -14,7 +14,7 @@ import {
 
 export type FixResult =
   | { outcome: "fixed"; commitSha: string; summary: string }
-  | { outcome: "exhausted"; attempts: number };
+  | { outcome: "exhausted"; attempts: number; lastFailedGate: string };
 
 // The outer retry cap (decided earlier, alongside the Validation Gate
 // concept itself) and a separate, tighter turn cap for each individual
@@ -131,6 +131,7 @@ async function commitAndPush(
   checkoutDir: string,
   thread: ReviewThread,
   summary: string,
+  dryRun: boolean,
 ): Promise<string> {
   const git = simpleGit(checkoutDir);
   // A fresh clone has no local git identity -- set one rather than relying
@@ -143,8 +144,14 @@ async function commitAndPush(
 Addresses review comment: ${thread.rootComment.htmlUrl}
 
 Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>`;
+  // The commit itself is local to a throwaway temp checkout -- harmless to
+  // make even in a dry run, and it's what gives us a real commitSha to
+  // report. Only the push actually reaches GitHub, so that's the one step
+  // dry-run skips.
   const result = await git.commit(message);
-  await git.push();
+  if (!dryRun) {
+    await git.push();
+  }
   return result.commit;
 }
 
@@ -167,6 +174,7 @@ export async function attemptFix(
   checkoutDir: string,
   thread: ReviewThread,
   verdict: Verdict,
+  dryRun = false,
 ): Promise<FixResult> {
   const fixServer = createSdkMcpServer({
     name: "fix-tools",
@@ -176,6 +184,7 @@ export async function attemptFix(
 
   let sessionId: string | undefined;
   let prompt = buildFixPrompt(thread, verdict);
+  let lastFailedGate = "the agent never completed an edit";
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     const result = await runAttempt(prompt, checkoutDir, fixServer, sessionId);
@@ -193,13 +202,15 @@ export async function attemptFix(
         checkoutDir,
         thread,
         result.summary,
+        dryRun,
       );
       return { outcome: "fixed", commitSha, summary: result.summary };
     }
 
+    lastFailedGate = gate.failedGate ?? lastFailedGate;
     prompt = buildRetryPrompt(gate);
   }
 
   await resetWorkingTree(checkoutDir);
-  return { outcome: "exhausted", attempts: MAX_ATTEMPTS };
+  return { outcome: "exhausted", attempts: MAX_ATTEMPTS, lastFailedGate };
 }
