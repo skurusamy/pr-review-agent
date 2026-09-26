@@ -11,6 +11,7 @@ import {
   buildDraftReply,
   hasExistingReply,
   createPendingReview,
+  postFixConfirmation,
   type DraftReplyEntry,
 } from "./draft/draftReply.js";
 
@@ -100,6 +101,25 @@ export async function runReview(options: ReviewRunOptions): Promise<void> {
               ? `[dry-run] Would push commit ${fixResult.commitSha}: ${fixResult.summary}`
               : `Pushed commit ${fixResult.commitSha}: ${fixResult.summary}`,
           );
+          if (dryRun) {
+            console.log(
+              "[dry-run] Would post a confirmation reply marking this comment as handled.",
+            );
+          } else {
+            // Without this, a rerun's hasExistingReply would find no marker
+            // for this comment at all (a fix commits code, not a comment)
+            // and redo the whole Verdict/Fix Attempt loop on something
+            // already fixed.
+            await postFixConfirmation(
+              octokit,
+              owner,
+              repo,
+              prNumber,
+              rootComment.id,
+              fixResult.commitSha,
+              fixResult.summary,
+            );
+          }
         } else {
           console.log(
             `Fix Attempt exhausted after ${fixResult.attempts} attempts (${fixResult.lastFailedGate}); falling back to a draft reply.`,

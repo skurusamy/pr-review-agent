@@ -139,6 +139,37 @@ export async function hasExistingReply(
 }
 
 /**
+ * Marks a comment as handled after a successful Fix Attempt. Unlike
+ * buildDraftReply's output, this doesn't go through a pending review -- a
+ * pushed fix has already happened and is already visible (the commit
+ * itself), so there's nothing pending a human's approval here, just a note
+ * for transparency and (critically) an Agent Marker so a rerun's
+ * hasExistingReply sees this comment as already handled. Posted as an
+ * immediate reply via the single-comment endpoint, which is the only one
+ * that supports in_reply_to -- unlike buildDraftReply's cases, this one
+ * doesn't need to be pending, so it can use the endpoint that actually
+ * nests it in the original thread.
+ */
+export async function postFixConfirmation(
+  octokit: Octokit,
+  owner: string,
+  repo: string,
+  prNumber: number,
+  rootCommentId: number,
+  commitSha: string,
+  summary: string,
+): Promise<void> {
+  const body = `Fixed in ${commitSha.slice(0, 7)}: ${summary}\n\n${marker(rootCommentId)}`;
+  await octokit.rest.pulls.createReplyForReviewComment({
+    owner,
+    repo,
+    pull_number: prNumber,
+    comment_id: rootCommentId,
+    body,
+  });
+}
+
+/**
  * Creates ONE pending review holding every entry -- not one review per
  * comment, since only one pending review per user per PR is allowed at all.
  * If a pending review from an earlier run already exists (a human hasn't
