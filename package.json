@@ -22,6 +22,7 @@
   "license": "UNLICENSED",
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@octokit/plugin-rest-endpoint-methods": "^18.0.0",
     "@types/node": "^26.6.3",
     "eslint": "^10.11.0",
     "eslint-config-prettier": "^10.1.8",
@@ -30,5 +31,8 @@
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.70.1",
     "vitest": "^5.0.2"
+  },
+  "dependencies": {
+    "octokit": "^5.0.5"
   }
 }
