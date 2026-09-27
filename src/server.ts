@@ -9,10 +9,12 @@ import { classifyLogLine } from "./logFormat.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-// Reading PORT (defaulting locally to 3000) is what makes this the same
-// code Cloud Run would run later, not just similar to it -- Cloud Run
+// Reading PORT (defaulting locally to 4127, deliberately not 3000 -- that's
+// the first port half of all local dev tooling reaches for, so it's the one
+// most likely to already be taken by something else) is what makes this the
+// same code Cloud Run would run later, not just similar to it -- Cloud Run
 // injects PORT and expects the container to listen on it.
-const PORT = Number(process.env.PORT ?? 3000);
+const PORT = Number(process.env.PORT ?? 4127);
 
 // Fails fast here, before the server ever starts accepting requests --
 // same philosophy as the CLI, just moved from "before running the command"
