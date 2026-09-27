@@ -21,6 +21,12 @@ export interface ReviewRunOptions {
   prNumber: number;
   dryRun: boolean;
   githubToken: string;
+  /**
+   * Where progress lines go. Defaults to console.log (the CLI's behavior).
+   * The server passes a capturing function instead, since a request/response
+   * cycle has no stdout of its own to write to.
+   */
+  log?: (line: string) => void;
 }
 
 /**
@@ -31,19 +37,26 @@ export interface ReviewRunOptions {
  * Gate) except the final git push and GitHub review-creation call.
  */
 export async function runReview(options: ReviewRunOptions): Promise<void> {
-  const { owner, repo, prNumber, dryRun, githubToken } = options;
+  const {
+    owner,
+    repo,
+    prNumber,
+    dryRun,
+    githubToken,
+    log = console.log,
+  } = options;
   const octokit = createOctokit(githubToken);
 
-  console.log(`Fetching review comments for ${owner}/${repo}#${prNumber}...`);
+  log(`Fetching review comments for ${owner}/${repo}#${prNumber}...`);
   const threads = await fetchReviewThreads(octokit, owner, repo, prNumber);
-  console.log(`Found ${threads.length} comment thread(s).`);
+  log(`Found ${threads.length} comment thread(s).`);
 
   if (threads.length === 0) {
-    console.log("Nothing to do.");
+    log("Nothing to do.");
     return;
   }
 
-  console.log("Checking out the PR's head branch...");
+  log("Checking out the PR's head branch...");
   const checkout = await checkoutPullRequestHead(
     octokit,
     owner,
@@ -57,7 +70,7 @@ export async function runReview(options: ReviewRunOptions): Promise<void> {
   try {
     for (const thread of threads) {
       const { rootComment } = thread;
-      console.log(
+      log(
         `\n--- ${rootComment.path}:${rootComment.line ?? rootComment.originalLine} (${rootComment.htmlUrl}) ---`,
       );
 
@@ -69,7 +82,7 @@ export async function runReview(options: ReviewRunOptions): Promise<void> {
         rootComment.id,
       );
       if (alreadyHandled) {
-        console.log("Already handled in a previous run, skipping.");
+        log("Already handled in a previous run, skipping.");
         continue;
       }
 
@@ -78,17 +91,17 @@ export async function runReview(options: ReviewRunOptions): Promise<void> {
         verdict = await reachVerdict(checkout.dir, thread);
       } catch (error) {
         if (error instanceof VerdictIncompleteError) {
-          console.log(`Could not reach a verdict: ${error.message}. Skipping.`);
+          log(`Could not reach a verdict: ${error.message}. Skipping.`);
           continue;
         }
         throw error;
       }
-      console.log(`Verdict: ${verdict.verdict} -- ${verdict.reasoning}`);
+      log(`Verdict: ${verdict.verdict} -- ${verdict.reasoning}`);
 
       const action = decideAction(thread, verdict);
 
       if (action === "fix") {
-        console.log("Attempting a fix...");
+        log("Attempting a fix...");
         const fixResult = await attemptFix(
           checkout.dir,
           thread,
@@ -96,13 +109,13 @@ export async function runReview(options: ReviewRunOptions): Promise<void> {
           dryRun,
         );
         if (fixResult.outcome === "fixed") {
-          console.log(
+          log(
             dryRun
               ? `[dry-run] Would push commit ${fixResult.commitSha}: ${fixResult.summary}`
               : `Pushed commit ${fixResult.commitSha}: ${fixResult.summary}`,
           );
           if (dryRun) {
-            console.log(
+            log(
               "[dry-run] Would post a confirmation reply marking this comment as handled.",
             );
           } else {
@@ -121,7 +134,7 @@ export async function runReview(options: ReviewRunOptions): Promise<void> {
             );
           }
         } else {
-          console.log(
+          log(
             `Fix Attempt exhausted after ${fixResult.attempts} attempts (${fixResult.lastFailedGate}); falling back to a draft reply.`,
           );
           draftEntries.push(
@@ -132,7 +145,7 @@ export async function runReview(options: ReviewRunOptions): Promise<void> {
           );
         }
       } else {
-        console.log("Not a bug; drafting a reply.");
+        log("Not a bug; drafting a reply.");
         draftEntries.push(
           buildDraftReply(thread, { kind: "not-a-bug", verdict }),
         );
@@ -143,18 +156,16 @@ export async function runReview(options: ReviewRunOptions): Promise<void> {
   }
 
   if (draftEntries.length === 0) {
-    console.log("\nNo draft replies to create.");
+    log("\nNo draft replies to create.");
     return;
   }
 
   if (dryRun) {
-    console.log(
+    log(
       `\n[dry-run] Would create a pending review with ${draftEntries.length} comment(s):`,
     );
     for (const entry of draftEntries) {
-      console.log(
-        `  - ${entry.path}:${entry.line}\n    ${entry.body.split("\n")[0]}`,
-      );
+      log(`  - ${entry.path}:${entry.line}\n    ${entry.body.split("\n")[0]}`);
     }
     return;
   }
@@ -167,11 +178,11 @@ export async function runReview(options: ReviewRunOptions): Promise<void> {
     draftEntries,
   );
   if (result.created) {
-    console.log(
+    log(
       `\nCreated a pending review (id ${result.reviewId}) with ${draftEntries.length} comment(s). Submit it on GitHub when ready.`,
     );
   } else {
-    console.log(
+    log(
       "\nCould not create a pending review: one already exists. Submit or dismiss it on GitHub first.",
     );
   }
