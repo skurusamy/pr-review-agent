@@ -1,4 +1,5 @@
 const MAX_INPUT_CHARS = 150;
+const MAX_THINKING_CHARS = 400;
 
 /**
  * Formats a tool call for the same log stream everything else writes to --
@@ -13,4 +14,16 @@ export function formatToolUse(name: string, input: unknown): string {
       ? `${inputStr.slice(0, MAX_INPUT_CHARS)}...`
       : inputStr;
   return `  [tool] ${name} ${truncated}`;
+}
+
+/**
+ * Formats a thinking block the same way -- a longer allowance than tool
+ * input, since reasoning text is prose, not a short argument list.
+ */
+export function formatThinking(text: string): string {
+  const truncated =
+    text.length > MAX_THINKING_CHARS
+      ? `${text.slice(0, MAX_THINKING_CHARS)}...`
+      : text;
+  return `  [thinking] ${truncated}`;
 }

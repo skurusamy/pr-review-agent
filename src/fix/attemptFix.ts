@@ -11,7 +11,7 @@ import {
   runValidationGate,
   type GateResult,
 } from "../validation/validationGate.js";
-import { formatToolUse } from "../toolLog.js";
+import { formatToolUse, formatThinking } from "../toolLog.js";
 
 export type FixResult =
   | { outcome: "fixed"; commitSha: string; summary: string }
@@ -98,6 +98,9 @@ async function runAttempt(
       model: "claude-sonnet-5",
       maxTurns: MAX_TURNS_PER_ATTEMPT,
       permissionMode: "acceptEdits",
+      // Same as reachVerdict: adaptive thinking, summarized for log
+      // readability.
+      thinking: { type: "adaptive", display: "summarized" },
       // Read-only investigation, targeted Edit, and the one "I'm done" tool.
       // Deliberately no Write (full-file overwrite, unnecessary for a scoped
       // fix) and no Bash -- the Validation Gate is our own deterministic
@@ -118,6 +121,10 @@ async function runAttempt(
     }
     if (message.type === "assistant") {
       for (const block of message.message.content) {
+        if (block.type === "thinking") {
+          log(formatThinking(block.thinking));
+          continue;
+        }
         if (block.type !== "tool_use") {
           continue;
         }

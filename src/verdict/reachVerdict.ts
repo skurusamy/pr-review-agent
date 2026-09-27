@@ -5,7 +5,7 @@ import {
 } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 import type { ReviewThread } from "../github/types.js";
-import { formatToolUse } from "../toolLog.js";
+import { formatToolUse, formatThinking } from "../toolLog.js";
 
 export interface Verdict {
   verdict: "bug" | "not-a-bug";
@@ -108,6 +108,10 @@ export async function reachVerdict(
       cwd: checkoutDir,
       model: "claude-sonnet-5",
       maxTurns: MAX_TURNS,
+      // Adaptive: Claude decides when and how much to think. 'summarized'
+      // display keeps what we log readable -- the raw chain can be long
+      // prose, and this is a log line, not a transcript viewer.
+      thinking: { type: "adaptive", display: "summarized" },
       // Read-only investigation tools plus our one custom "answer" tool.
       // Custom SDK MCP tools are addressed as mcp__<serverName>__<toolName>.
       allowedTools: [
@@ -122,10 +126,14 @@ export async function reachVerdict(
     // An "assistant" SDKMessage wraps a real Anthropic Messages API message
     // under `.message` (role, content blocks, stop_reason, usage) — the outer
     // SDKMessage envelope is the harness's own bookkeeping, not part of what
-    // was actually said. We're scanning for a `tool_use` content block, since
-    // that's the only place a tool call's arguments appear.
+    // was actually said. We're scanning for tool_use and thinking content
+    // blocks, since those are the only places worth logging.
     if (message.type === "assistant") {
       for (const block of message.message.content) {
+        if (block.type === "thinking") {
+          log(formatThinking(block.thinking));
+          continue;
+        }
         if (block.type !== "tool_use") {
           continue;
         }
