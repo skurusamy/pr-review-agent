@@ -88,7 +88,7 @@ export async function runReview(options: ReviewRunOptions): Promise<void> {
 
       let verdict;
       try {
-        verdict = await reachVerdict(checkout.dir, thread);
+        verdict = await reachVerdict(checkout.dir, thread, log);
       } catch (error) {
         if (error instanceof VerdictIncompleteError) {
           log(`Could not reach a verdict: ${error.message}. Skipping.`);
@@ -107,6 +107,7 @@ export async function runReview(options: ReviewRunOptions): Promise<void> {
           thread,
           verdict,
           dryRun,
+          log,
         );
         if (fixResult.outcome === "fixed") {
           log(

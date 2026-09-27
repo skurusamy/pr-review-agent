@@ -11,6 +11,7 @@ import {
   runValidationGate,
   type GateResult,
 } from "../validation/validationGate.js";
+import { formatToolUse } from "../toolLog.js";
 
 export type FixResult =
   | { outcome: "fixed"; commitSha: string; summary: string }
@@ -85,6 +86,7 @@ async function runAttempt(
   prompt: string,
   checkoutDir: string,
   fixServer: ReturnType<typeof createSdkMcpServer>,
+  log: (line: string) => void,
   resumeSessionId?: string,
 ): Promise<AttemptOutcome> {
   let sessionId = "";
@@ -116,10 +118,16 @@ async function runAttempt(
     }
     if (message.type === "assistant") {
       for (const block of message.message.content) {
-        if (block.type === "tool_use" && block.name.endsWith("submit_fix")) {
+        if (block.type !== "tool_use") {
+          continue;
+        }
+        if (block.name.endsWith("submit_fix")) {
           const input = block.input as { summary: string };
           return { summary: input.summary, sessionId };
         }
+        // Investigation and edit tools (Read/Grep/Glob/Edit) -- same
+        // lightweight visibility as reachVerdict, not full tracing.
+        log(formatToolUse(block.name, block.input));
       }
     }
   }
@@ -175,6 +183,7 @@ export async function attemptFix(
   thread: ReviewThread,
   verdict: Verdict,
   dryRun = false,
+  log: (line: string) => void = console.log,
 ): Promise<FixResult> {
   const fixServer = createSdkMcpServer({
     name: "fix-tools",
@@ -187,7 +196,13 @@ export async function attemptFix(
   let lastFailedGate = "the agent never completed an edit";
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    const result = await runAttempt(prompt, checkoutDir, fixServer, sessionId);
+    const result = await runAttempt(
+      prompt,
+      checkoutDir,
+      fixServer,
+      log,
+      sessionId,
+    );
     sessionId = result.sessionId;
 
     if (result.summary === null) {

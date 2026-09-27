@@ -5,6 +5,7 @@ import {
 } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 import type { ReviewThread } from "../github/types.js";
+import { formatToolUse } from "../toolLog.js";
 
 export interface Verdict {
   verdict: "bug" | "not-a-bug";
@@ -93,6 +94,7 @@ submit_verdict exactly once with your verdict and reasoning.`;
 export async function reachVerdict(
   checkoutDir: string,
   thread: ReviewThread,
+  log: (line: string) => void = console.log,
 ): Promise<Verdict> {
   const verdictServer = createSdkMcpServer({
     name: "verdict-tools",
@@ -124,13 +126,17 @@ export async function reachVerdict(
     // that's the only place a tool call's arguments appear.
     if (message.type === "assistant") {
       for (const block of message.message.content) {
-        if (
-          block.type === "tool_use" &&
-          block.name.endsWith("submit_verdict")
-        ) {
+        if (block.type !== "tool_use") {
+          continue;
+        }
+        if (block.name.endsWith("submit_verdict")) {
           const input = block.input as Verdict;
           return { verdict: input.verdict, reasoning: input.reasoning };
         }
+        // Investigation tools (Read/Grep/Glob) -- logged so there's some
+        // visibility into what the agent actually looked at, short of full
+        // tracing (that's what Langfuse would give, if it existed here).
+        log(formatToolUse(block.name, block.input));
       }
     }
   }
