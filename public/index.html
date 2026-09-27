@@ -131,6 +131,11 @@
 
       function appendLine(kind, text) {
         if (!text) return;
+        // Reveal the terminal panel on its first real line, not on submit --
+        // an error that happens before any log line arrives (a bad PR URL,
+        // a network failure) should show only the error message, not an
+        // empty black box next to it.
+        output.hidden = false;
         const line = document.createElement("div");
         line.className = `log-line log-${kind}`;
         line.textContent = text;
@@ -144,7 +149,7 @@
         submitButton.textContent = "Running...";
         errorBox.hidden = true;
         output.textContent = "";
-        output.hidden = false;
+        output.hidden = true;
 
         const prUrl = document.getElementById("prUrl").value;
         const dryRun = document.getElementById("dryRun").checked;
