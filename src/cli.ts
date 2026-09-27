@@ -2,6 +2,8 @@ import "dotenv/config";
 import { parseArgs } from "./cliArgs.js";
 import { loadSecrets } from "./secrets.js";
 import { runReview } from "./reviewRun.js";
+import { colorizeLine } from "./cliLog.js";
+import { paint } from "./ansi.js";
 
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
@@ -16,12 +18,19 @@ async function main(): Promise<void> {
     prNumber: args.prNumber,
     dryRun: args.dryRun,
     githubToken,
+    log: (line) => console.log(colorizeLine(line)),
   });
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   main().catch((error) => {
-    console.error(error instanceof Error ? error.message : error);
+    console.error(
+      paint(
+        error instanceof Error ? error.message : String(error),
+        "bold",
+        "red",
+      ),
+    );
     process.exit(1);
   });
 }

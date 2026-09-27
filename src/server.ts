@@ -5,6 +5,7 @@ import express from "express";
 import { loadSecrets } from "./secrets.js";
 import { parsePrUrl } from "./prUrl.js";
 import { runReview } from "./reviewRun.js";
+import { classifyLogLine } from "./logFormat.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -35,7 +36,20 @@ app.post("/review", async (req, res) => {
     return;
   }
 
-  const lines: string[] = [];
+  // Streamed as newline-delimited JSON, one object per log line, instead of
+  // one blob returned at the end -- a run with a few comments can take a
+  // couple of minutes, and the browser renders each line as it arrives.
+  // Headers are sent 200 immediately, before we know whether the run will
+  // succeed, so failure is reported as an in-band {kind: "error"} line
+  // rather than an HTTP error status (which can't change after the body has
+  // started streaming).
+  res.setHeader("Content-Type", "application/x-ndjson");
+  res.flushHeaders();
+
+  const send = (entry: { kind: string; text: string }): void => {
+    res.write(`${JSON.stringify(entry)}\n`);
+  };
+
   try {
     await runReview({
       owner: reference.owner,
@@ -43,14 +57,16 @@ app.post("/review", async (req, res) => {
       prNumber: reference.prNumber,
       dryRun: dryRun ?? true,
       githubToken: secrets.githubToken,
-      log: (line) => lines.push(line),
+      log: (line) => send({ kind: classifyLogLine(line), text: line.trim() }),
     });
-    res.json({ log: lines.join("\n") });
+    send({ kind: "done", text: "" });
   } catch (error) {
-    res.status(500).json({
-      log: lines.join("\n"),
-      error: error instanceof Error ? error.message : String(error),
+    send({
+      kind: "error",
+      text: error instanceof Error ? error.message : String(error),
     });
+  } finally {
+    res.end();
   }
 });
 

@@ -42,15 +42,57 @@
         cursor: not-allowed;
         opacity: 0.6;
       }
-      pre {
+      #output {
         background: #111;
-        color: #eee;
+        color: #d1d5db;
         padding: 1rem;
         border-radius: 6px;
-        white-space: pre-wrap;
         margin-top: 1.5rem;
         max-height: 60vh;
         overflow-y: auto;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 0.85rem;
+        line-height: 1.5;
+      }
+      .log-line {
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+      .log-thinking {
+        color: #7dd3fc;
+        font-style: italic;
+        opacity: 0.85;
+      }
+      .log-tool {
+        color: #60a5fa;
+      }
+      .log-verdict-bug {
+        color: #f87171;
+        font-weight: 600;
+      }
+      .log-verdict-not-bug {
+        color: #4ade80;
+      }
+      .log-section {
+        color: #f3f4f6;
+        font-weight: 700;
+        margin-top: 0.75rem;
+        padding-top: 0.5rem;
+        border-top: 1px solid #333;
+      }
+      .log-success {
+        color: #4ade80;
+        font-weight: 600;
+      }
+      .log-warn {
+        color: #fbbf24;
+      }
+      .log-error {
+        color: #f87171;
+        font-weight: 700;
+      }
+      .log-info {
+        color: #9ca3af;
       }
       .error {
         color: #b00020;
@@ -79,7 +121,7 @@
     </form>
 
     <div id="error" class="error" hidden></div>
-    <pre id="output" hidden></pre>
+    <div id="output" hidden></div>
 
     <script>
       const form = document.getElementById("review-form");
@@ -87,12 +129,22 @@
       const output = document.getElementById("output");
       const errorBox = document.getElementById("error");
 
+      function appendLine(kind, text) {
+        if (!text) return;
+        const line = document.createElement("div");
+        line.className = `log-line log-${kind}`;
+        line.textContent = text;
+        output.appendChild(line);
+        output.scrollTop = output.scrollHeight;
+      }
+
       form.addEventListener("submit", async (event) => {
         event.preventDefault();
         submitButton.disabled = true;
         submitButton.textContent = "Running...";
         errorBox.hidden = true;
-        output.hidden = true;
+        output.textContent = "";
+        output.hidden = false;
 
         const prUrl = document.getElementById("prUrl").value;
         const dryRun = document.getElementById("dryRun").checked;
@@ -103,16 +155,40 @@
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ prUrl, dryRun }),
           });
-          const data = await response.json();
 
-          if (data.log) {
-            output.textContent = data.log;
-            output.hidden = false;
-          }
-          if (!response.ok) {
+          if (!response.ok || !response.body) {
+            const data = await response.json().catch(() => ({}));
             errorBox.textContent =
               data.error ?? `Request failed (${response.status})`;
             errorBox.hidden = false;
+            return;
+          }
+
+          // The response body is streamed as newline-delimited JSON, one
+          // object per log line -- read it as it arrives instead of
+          // waiting for the whole run (which can take a couple of minutes)
+          // to finish, so progress shows up live.
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = "";
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split("\n");
+            buffer = lines.pop() ?? "";
+            for (const raw of lines) {
+              if (!raw) continue;
+              const entry = JSON.parse(raw);
+              if (entry.kind === "done") continue;
+              if (entry.kind === "error") {
+                errorBox.textContent = entry.text;
+                errorBox.hidden = false;
+                continue;
+              }
+              appendLine(entry.kind, entry.text);
+            }
           }
         } catch (err) {
           errorBox.textContent =

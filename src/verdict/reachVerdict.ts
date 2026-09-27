@@ -5,7 +5,7 @@ import {
 } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 import type { ReviewThread } from "../github/types.js";
-import { formatToolUse, formatThinking } from "../toolLog.js";
+import { formatToolUse, formatThinking, isNoiseTool } from "../toolLog.js";
 
 export interface Verdict {
   verdict: "bug" | "not-a-bug";
@@ -141,10 +141,13 @@ export async function reachVerdict(
           const input = block.input as Verdict;
           return { verdict: input.verdict, reasoning: input.reasoning };
         }
+        if (isNoiseTool(block.name)) {
+          continue;
+        }
         // Investigation tools (Read/Grep/Glob) -- logged so there's some
         // visibility into what the agent actually looked at, short of full
         // tracing (that's what Langfuse would give, if it existed here).
-        log(formatToolUse(block.name, block.input));
+        log(formatToolUse(block.name, block.input, checkoutDir));
       }
     }
   }

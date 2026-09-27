@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { simpleGit } from "simple-git";
@@ -47,7 +47,12 @@ export async function checkoutPullRequestHead(
   });
   assertSameRepoPullRequest(pr);
 
-  const dir = await mkdtemp(join(tmpdir(), "pr-review-agent-"));
+  // realpath matters on macOS: os.tmpdir() returns an unresolved /var/...
+  // path, but /var is a symlink to /private/var -- any tool that reports an
+  // absolute path (Read, Edit, ...) reports the resolved /private/var/...
+  // form. Without resolving here too, string-matching this dir against a
+  // tool's reported path (e.g. to shorten it for logging) silently fails.
+  const dir = await realpath(await mkdtemp(join(tmpdir(), "pr-review-agent-")));
   const authenticatedUrl = `https://x-access-token:${token}@github.com/${owner}/${repo}.git`;
   const git = simpleGit();
   await git.clone(authenticatedUrl, dir, [

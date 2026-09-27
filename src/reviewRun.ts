@@ -165,8 +165,12 @@ export async function runReview(options: ReviewRunOptions): Promise<void> {
     log(
       `\n[dry-run] Would create a pending review with ${draftEntries.length} comment(s):`,
     );
+    // Just the locations -- the reasoning for each was already printed once,
+    // at its own "Verdict: ..." line above. Repeating the full text here
+    // duplicated it exactly, since a one-paragraph reasoning has no internal
+    // newline for entry.body.split("\n")[0] to actually truncate at.
     for (const entry of draftEntries) {
-      log(`  - ${entry.path}:${entry.line}\n    ${entry.body.split("\n")[0]}`);
+      log(`  - ${entry.path}:${entry.line}`);
     }
     return;
   }

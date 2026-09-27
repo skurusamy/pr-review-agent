@@ -11,7 +11,7 @@ import {
   runValidationGate,
   type GateResult,
 } from "../validation/validationGate.js";
-import { formatToolUse, formatThinking } from "../toolLog.js";
+import { formatToolUse, formatThinking, isNoiseTool } from "../toolLog.js";
 
 export type FixResult =
   | { outcome: "fixed"; commitSha: string; summary: string }
@@ -132,9 +132,12 @@ async function runAttempt(
           const input = block.input as { summary: string };
           return { summary: input.summary, sessionId };
         }
+        if (isNoiseTool(block.name)) {
+          continue;
+        }
         // Investigation and edit tools (Read/Grep/Glob/Edit) -- same
         // lightweight visibility as reachVerdict, not full tracing.
-        log(formatToolUse(block.name, block.input));
+        log(formatToolUse(block.name, block.input, checkoutDir));
       }
     }
   }
