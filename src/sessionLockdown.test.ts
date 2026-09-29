@@ -106,6 +106,31 @@ describe("Briefing session", () => {
     expect(briefing.summary).toBe("s");
   });
 
+  it("hands the linked issues it was given back with the briefing", async () => {
+    fakeQueries([toolUse("mcp__briefing-tools__submit_briefing", submit)]);
+    const linkedIssues = [
+      {
+        number: 12,
+        kind: "issue" as const,
+        title: "T",
+        state: "open",
+        body: "",
+      },
+    ];
+    const briefing = await generateBriefing(
+      { ...context, linkedIssues },
+      () => {},
+    );
+    expect(briefing.linkedIssues).toEqual(linkedIssues);
+  });
+
+  it("returns an empty list when the PR linked no issues", async () => {
+    fakeQueries([toolUse("mcp__briefing-tools__submit_briefing", submit)]);
+    expect((await generateBriefing(context, () => {})).linkedIssues).toEqual(
+      [],
+    );
+  });
+
   it("turns the SDK's turn-limit error into BriefingIncompleteError", async () => {
     fakeQueries([maxTurns()]);
     await expect(generateBriefing(context, () => {})).rejects.toBeInstanceOf(

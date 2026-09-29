@@ -13,6 +13,10 @@ import {
   type ChangedFile,
 } from "./changedFilesTree.js";
 import { formatThinking } from "../toolLog.js";
+import {
+  formatLinkedIssuesForPrompt,
+  type LinkedIssue,
+} from "./linkedIssues.js";
 import { isMaxTurnsError, lockedDown } from "../agentSession.js";
 
 export interface Briefing {
@@ -20,6 +24,8 @@ export interface Briefing {
   mermaidDiagram: string;
   risks: string[];
   changedFiles: ChangedFile[];
+  /** The issues the model was given as background, so the report can show them. */
+  linkedIssues: LinkedIssue[];
 }
 
 /**
@@ -75,12 +81,19 @@ export function buildBriefingPrompt(
       ? `\n\nExisting conversation on this PR:\n${context.comments.map((c) => `- ${c.author}: ${c.body}`).join("\n")}`
       : "";
 
+  // Only when there is something to compare against; otherwise the model
+  // would be told to check an issue that doesn't exist.
+  const issueInstruction =
+    (context.linkedIssues?.length ?? 0) > 0
+      ? " Where a linked issue says what this change is for, say in the summary whether the diff appears to deliver it, and list anything the issue asks for that the diff does not do. Linked pull requests are background only."
+      : "";
+
   return `A teammate is about to review this pull request. Give them a briefing.
 
 Title: ${context.title}
 
 Description:
-${context.description ?? "(no description provided)"}
+${context.description ?? "(no description provided)"}${formatLinkedIssuesForPrompt(context.linkedIssues ?? [])}
 ${conversation}
 
 Changed files (mechanical, already computed -- for your own context, not something to repeat):
@@ -93,7 +106,8 @@ Investigate nothing beyond what's above -- there's no local checkout to read.
 Decide what a reviewer most needs to know: what this change actually does,
 whether the diff matches what the title/description claim, a diagram
 sketching the shape of the change, and the specific things worth
-double-checking. When ready, call submit_briefing exactly once.`;
+double-checking.${issueInstruction}
+When ready, call submit_briefing exactly once.`;
 }
 
 /**
@@ -160,7 +174,11 @@ export async function generateBriefing(
               mermaidDiagram: string;
               risks: string[];
             };
-            return { ...input, changedFiles };
+            return {
+              ...input,
+              changedFiles,
+              linkedIssues: context.linkedIssues ?? [],
+            };
           }
         }
       }

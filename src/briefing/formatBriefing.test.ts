@@ -10,6 +10,7 @@ function makeBriefing(overrides: Partial<Briefing> = {}): Briefing {
     changedFiles: [
       { path: "src/page.ts", status: "modified", additions: 2, deletions: 1 },
     ],
+    linkedIssues: [],
     ...overrides,
   };
 }
@@ -39,6 +40,32 @@ describe("formatBriefingMarkdown", () => {
   it("includes the changed-files tree", () => {
     const md = formatBriefingMarkdown("t", "u", makeBriefing());
     expect(md).toContain("src/page.ts");
+  });
+
+  it("lists linked issues under their own heading", () => {
+    const md = formatBriefingMarkdown(
+      "t",
+      "u",
+      makeBriefing({
+        linkedIssues: [
+          {
+            number: 12,
+            kind: "issue",
+            title: "Pagination drops the last page",
+            state: "open",
+            body: "b",
+          },
+        ],
+      }),
+    );
+    expect(md).toContain("## Linked issues");
+    expect(md).toContain("- #12 Pagination drops the last page (issue, open)");
+  });
+
+  it("leaves out the linked-issues section when there are none", () => {
+    expect(formatBriefingMarkdown("t", "u", makeBriefing())).not.toContain(
+      "Linked issues",
+    );
   });
 
   it("shows a fallback when there are no risks", () => {

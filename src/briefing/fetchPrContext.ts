@@ -1,4 +1,5 @@
 import type { Octokit } from "octokit";
+import type { LinkedIssue } from "./linkedIssues.js";
 
 export interface PrComment {
   author: string;
@@ -16,6 +17,12 @@ export interface PrContext {
    * can't shift them onto the wrong lines.
    */
   headSha: string;
+  /**
+   * Same-repo issues the title/description point at. Filled in by the caller
+   * that wants them (Brief PR); left out here so a Code Review or Fix Run
+   * doesn't pay for lookups it won't use.
+   */
+  linkedIssues?: LinkedIssue[];
 }
 
 /**

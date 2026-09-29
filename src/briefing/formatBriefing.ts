@@ -17,6 +17,11 @@ export function formatBriefingMarkdown(
       ? briefing.risks.map((r) => `- ${r}`).join("\n")
       : "_Nothing in particular stood out._";
 
+  const linked =
+    briefing.linkedIssues.length > 0
+      ? `\n## Linked issues\n\n${briefing.linkedIssues.map((i) => `- #${i.number} ${i.title} (${i.kind}, ${i.state})`).join("\n")}\n`
+      : "";
+
   return `# PR Briefing: ${prTitle}
 
 ${prUrl}
@@ -30,7 +35,7 @@ ${briefing.summary}
 \`\`\`
 ${formatChangedFilesTree(briefing.changedFiles)}
 \`\`\`
-
+${linked}
 ## Diagram
 
 \`\`\`mermaid
