@@ -56,6 +56,34 @@ describe("buildReviewPrompt", () => {
     expect(withComments).toContain("sam: Is this safe?");
   });
 
+  it("has no linked-issue section or drift-against-issue instruction when there are none", () => {
+    expect(prompt).not.toContain("Linked GitHub issues");
+    expect(prompt).not.toContain("what a linked issue asks for");
+  });
+
+  it("includes linked issues as data and asks for drift against them", () => {
+    const withIssue = buildReviewPrompt(
+      makeContext({
+        linkedIssues: [
+          {
+            number: 9,
+            kind: "issue",
+            title: "Last page is dropped",
+            state: "open",
+            body: "The final page never shows.",
+          },
+        ],
+      }),
+      [],
+      "",
+      [],
+    );
+    expect(withIssue).toContain("Linked GitHub issues and pull requests");
+    expect(withIssue).toContain("#9 [issue, open] Last page is dropped");
+    expect(withIssue).toContain("The final page never shows.");
+    expect(withIssue).toContain("what a linked issue asks for");
+  });
+
   it("notes when there is no description", () => {
     const none = buildReviewPrompt(
       makeContext({ description: null }),

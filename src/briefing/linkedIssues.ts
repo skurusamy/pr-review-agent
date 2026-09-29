@@ -135,6 +135,24 @@ export async function fetchLinkedIssues(
   return issues;
 }
 
+/**
+ * The issues the PR's title and description point at. Brief PR and Review PR
+ * both call this, so "which text is searched" is decided in one place.
+ */
+export function fetchLinkedIssuesOfPr(
+  octokit: Octokit,
+  ref: PrReference,
+  context: { title: string; description: string | null },
+  log: (line: string) => void = console.log,
+): Promise<LinkedIssue[]> {
+  return fetchLinkedIssues(
+    octokit,
+    ref,
+    `${context.title}\n${context.description ?? ""}`,
+    log,
+  );
+}
+
 /** The issues as a prompt section, or an empty string when there are none. */
 export function formatLinkedIssuesForPrompt(issues: LinkedIssue[]): string {
   if (issues.length === 0) return "";

@@ -34,13 +34,18 @@ export function formatCodeReviewMarkdown(
       ? `\n\n## Not reviewed\n\nThe model was not shown a diff for these files:\n\n${review.skippedFiles.map((s) => `- \`${s.path}\` (${s.reason})`).join("\n")}`
       : "";
 
+  const linked =
+    review.linkedIssues.length > 0
+      ? `\n\n## Linked issues\n\n${review.linkedIssues.map((i) => `- #${i.number} ${i.title} (${i.kind}, ${i.state})`).join("\n")}`
+      : "";
+
   return `# Code Review: ${prTitle}
 
 ${prUrl}
 
 ## Assessment
 
-${review.assessment}
+${review.assessment}${linked}
 
 ## Changed files
 

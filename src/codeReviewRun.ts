@@ -2,6 +2,7 @@ import { createOctokit } from "./github/client.js";
 import { checkoutPullRequestHead, withCheckout } from "./github/checkout.js";
 import { prUrlOf } from "./prUrl.js";
 import { fetchPrContext } from "./briefing/fetchPrContext.js";
+import { fetchLinkedIssuesOfPr } from "./briefing/linkedIssues.js";
 import {
   generateCodeReview,
   type CodeReview,
@@ -49,6 +50,15 @@ export async function runCodeReview(
 
   log(`Fetching PR context for ${owner}/${repo}#${prNumber}...`);
   const context = await fetchPrContext(octokit, owner, repo, prNumber, log);
+
+  // Same lookup as Brief PR: what the PR was asked to do is the yardstick
+  // for "drift", and it is read here in plain code, not by the model.
+  context.linkedIssues = await fetchLinkedIssuesOfPr(
+    octokit,
+    { owner, repo, prNumber },
+    context,
+    log,
+  );
 
   log("Checking out the PR's head branch...");
   return withCheckout(

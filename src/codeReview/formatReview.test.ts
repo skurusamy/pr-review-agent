@@ -20,6 +20,7 @@ function makeReview(overrides: Partial<CodeReview> = {}): CodeReview {
     changedFiles: [
       { path: "src/page.ts", status: "modified", additions: 2, deletions: 1 },
     ],
+    linkedIssues: [],
     ...overrides,
   };
 }
@@ -34,6 +35,25 @@ describe("formatCodeReviewMarkdown", () => {
     expect(md).toContain("https://github.com/o/r/pull/1");
     expect(md).toContain("Small and focused.");
     expect(md).toContain("~ src/page.ts (+2 -1)");
+  });
+
+  it("lists the linked issues it read, and omits the section when there are none", () => {
+    expect(render(makeReview())).not.toContain("## Linked issues");
+    const md = render(
+      makeReview({
+        linkedIssues: [
+          {
+            number: 12,
+            kind: "issue",
+            title: "Last page is dropped",
+            state: "open",
+            body: "",
+          },
+        ],
+      }),
+    );
+    expect(md).toContain("## Linked issues");
+    expect(md).toContain("- #12 Last page is dropped (issue, open)");
   });
 
   it("says so when there are no findings", () => {

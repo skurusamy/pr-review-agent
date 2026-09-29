@@ -74,6 +74,7 @@ const review = {
   unanchored: [],
   skippedFiles: [],
   changedFiles: [],
+  linkedIssues: [],
 };
 
 describe("POST /review", () => {
