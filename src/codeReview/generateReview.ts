@@ -20,6 +20,7 @@ import {
   type AnchorIndex,
 } from "./diffLines.js";
 import { selectDiffForReview, type SkippedFile } from "./selectDiff.js";
+import { isMaxTurnsError, lockedDown } from "../agentSession.js";
 
 export const SEVERITIES = ["high", "medium", "low"] as const;
 export const CATEGORIES = [
@@ -131,20 +132,9 @@ const submitReviewTool = tool(
 
 /**
  * The SDK options for a Code Review session, kept as a pure function so a
- * test can pin the security-relevant parts. This action reads OTHER PEOPLE'S
- * PRs, so its input is untrusted, and three defaults of the SDK are wrong
- * for it:
- *
- * - `allowedTools` only auto-approves tools; it does not remove any. A live
- *   run showed the model reaching for Bash despite it not being listed.
- *   `tools` is what actually restricts the set the model can use.
- * - With `settingSources` omitted the SDK loads user, project and local
- *   settings. "Project" means the PR's own .claude/settings.json, which its
- *   author controls and which can grant permissions or define hooks that run
- *   commands. `[]` loads none (and no CLAUDE.md from the checkout).
- * - The subprocess inherits process.env, and Read can open files such as
- *   /proc/self/environ on Linux -- where Cloud Run would run this. The
- *   review never needs the GitHub token, so it is removed from the env.
+ * test can pin the security-relevant parts (see agentSession.ts for why each
+ * one is set): read-only tools, no settings loaded from the PR, no GitHub
+ * token in the session's environment.
  */
 export function buildReviewQueryOptions(
   checkoutDir: string,
@@ -152,17 +142,13 @@ export function buildReviewQueryOptions(
   abortController?: AbortController,
   processEnv: NodeJS.ProcessEnv = process.env,
 ): Options {
-  const env = { ...processEnv };
-  delete env.GITHUB_TOKEN;
   return {
     cwd: checkoutDir,
     model: "claude-sonnet-5",
     maxTurns: MAX_TURNS,
     thinking: { type: "adaptive", display: "summarized" },
-    tools: [...READ_ONLY_TOOLS],
+    ...lockedDown(READ_ONLY_TOOLS, processEnv),
     allowedTools: [...READ_ONLY_TOOLS, "mcp__review-tools__submit_review"],
-    settingSources: [],
-    env,
     mcpServers: { "review-tools": reviewServer },
     ...(abortController ? { abortController } : {}),
   };
@@ -247,16 +233,6 @@ const FINALIZE_TURNS = 3;
 
 const SUBMIT_NOW_PROMPT =
   "You are out of investigation turns. Call submit_review now with what you have verified so far. Say in the assessment what you did not get to check. Report only findings you are sure of.";
-
-/**
- * The SDK signals an exhausted turn budget by THROWING, not by ending the
- * stream -- so a `throw` after the loop would never be reached for this case.
- */
-export function isMaxTurnsError(error: unknown): boolean {
-  return (
-    error instanceof Error && /maximum number of turns/i.test(error.message)
-  );
-}
 
 /**
  * Drives one query() call until the model submits, returning the validated

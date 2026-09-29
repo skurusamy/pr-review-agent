@@ -2,7 +2,9 @@ import {
   query,
   tool,
   createSdkMcpServer,
+  type Options,
 } from "@anthropic-ai/claude-agent-sdk";
+import { tmpdir } from "node:os";
 import { z } from "zod";
 import type { PrContext } from "./fetchPrContext.js";
 import {
@@ -11,6 +13,7 @@ import {
   type ChangedFile,
 } from "./changedFilesTree.js";
 import { formatThinking } from "../toolLog.js";
+import { isMaxTurnsError, lockedDown } from "../agentSession.js";
 
 export interface Briefing {
   summary: string;
@@ -94,6 +97,32 @@ double-checking. When ready, call submit_briefing exactly once.`;
 }
 
 /**
+ * The SDK options for a Briefing session, a pure function so a test can pin
+ * the security-relevant parts. The prompt carries a PR's title, description,
+ * conversation and diff, all written by other people, and the session has
+ * nothing to investigate: `tools` is empty (no built-in tools exist for the
+ * model, only `submit_briefing`), no settings are loaded, and the GitHub token
+ * is not in its environment. `cwd` is the system temp directory rather than
+ * the server's own working directory, which holds this app's `.env`.
+ */
+export function buildBriefingQueryOptions(
+  briefingServer: ReturnType<typeof createSdkMcpServer>,
+  abortController?: AbortController,
+  processEnv: NodeJS.ProcessEnv = process.env,
+): Options {
+  return {
+    cwd: tmpdir(),
+    model: "claude-sonnet-5",
+    maxTurns: MAX_TURNS,
+    thinking: { type: "adaptive", display: "summarized" },
+    ...lockedDown([], processEnv),
+    allowedTools: ["mcp__briefing-tools__submit_briefing"],
+    mcpServers: { "briefing-tools": briefingServer },
+    ...(abortController ? { abortController } : {}),
+  };
+}
+
+/**
  * Runs a single, read-only Claude Agent SDK session to produce a PR
  * Briefing. No checkout, no investigative tools (Read/Grep/Glob) -- there's
  * nothing local to look at, only the PR's own metadata and diff.
@@ -111,36 +140,35 @@ export async function generateBriefing(
     tools: [submitBriefingTool],
   });
 
-  for await (const message of query({
-    prompt: buildBriefingPrompt(context, changedFiles),
-    options: {
-      model: "claude-sonnet-5",
-      maxTurns: MAX_TURNS,
-      thinking: { type: "adaptive", display: "summarized" },
-      allowedTools: ["mcp__briefing-tools__submit_briefing"],
-      mcpServers: { "briefing-tools": briefingServer },
-      ...(abortController ? { abortController } : {}),
-    },
-  })) {
-    if (message.type === "assistant") {
-      for (const block of message.message.content) {
-        if (block.type === "thinking") {
-          log(formatThinking(block.thinking));
-          continue;
-        }
-        if (block.type !== "tool_use") {
-          continue;
-        }
-        if (block.name.endsWith("submit_briefing")) {
-          const input = block.input as {
-            summary: string;
-            mermaidDiagram: string;
-            risks: string[];
-          };
-          return { ...input, changedFiles };
+  try {
+    for await (const message of query({
+      prompt: buildBriefingPrompt(context, changedFiles),
+      options: buildBriefingQueryOptions(briefingServer, abortController),
+    })) {
+      if (message.type === "assistant") {
+        for (const block of message.message.content) {
+          if (block.type === "thinking") {
+            log(formatThinking(block.thinking));
+            continue;
+          }
+          if (block.type !== "tool_use") {
+            continue;
+          }
+          if (block.name.endsWith("submit_briefing")) {
+            const input = block.input as {
+              summary: string;
+              mermaidDiagram: string;
+              risks: string[];
+            };
+            return { ...input, changedFiles };
+          }
         }
       }
     }
+  } catch (error) {
+    // The SDK throws (rather than ending the stream) when the turn budget
+    // runs out, so the fallback below would never be reached for that case.
+    if (!isMaxTurnsError(error)) throw error;
   }
 
   throw new BriefingIncompleteError(

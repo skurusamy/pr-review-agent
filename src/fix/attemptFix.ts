@@ -2,6 +2,7 @@ import {
   query,
   tool,
   createSdkMcpServer,
+  type Options,
 } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 import { simpleGit, ResetMode, CleanOptions } from "simple-git";
@@ -12,6 +13,7 @@ import {
   type GateResult,
 } from "../validation/validationGate.js";
 import { formatToolUse, formatThinking, isNoiseTool } from "../toolLog.js";
+import { isMaxTurnsError, lockedDown } from "../agentSession.js";
 
 export type FixResult =
   | {
@@ -82,6 +84,44 @@ ${gate.output}
 Adjust your edit to fix this, then call submit_fix again once you believe it's ready.`;
 }
 
+// Read-only investigation plus targeted Edit. Deliberately no Write
+// (full-file overwrite, unnecessary for a scoped fix) and no Bash -- the
+// Validation Gate is our own deterministic code, never something the agent
+// can run itself.
+const FIX_TOOLS = ["Read", "Grep", "Glob", "Edit"] as const;
+
+/**
+ * The SDK options for a Fix Attempt session, a pure function so a test can pin
+ * the security-relevant parts (see agentSession.ts for why each is set). The
+ * decision above ("no Write, no Bash") only holds if the tool set is actually
+ * restricted: `allowedTools` merely auto-approves, so `tools` lists exactly
+ * what exists for the model. No settings load from the checkout (a PR's own
+ * .claude/settings.json could otherwise grant tools or define hooks), and the
+ * GitHub token is not in the session's environment.
+ */
+export function buildFixQueryOptions(
+  checkoutDir: string,
+  fixServer: ReturnType<typeof createSdkMcpServer>,
+  resumeSessionId?: string,
+  abortController?: AbortController,
+  processEnv: NodeJS.ProcessEnv = process.env,
+): Options {
+  return {
+    cwd: checkoutDir,
+    model: "claude-sonnet-5",
+    maxTurns: MAX_TURNS_PER_ATTEMPT,
+    permissionMode: "acceptEdits",
+    // Same as reachVerdict: adaptive thinking, summarized for log
+    // readability.
+    thinking: { type: "adaptive", display: "summarized" },
+    ...lockedDown(FIX_TOOLS, processEnv),
+    allowedTools: [...FIX_TOOLS, "mcp__fix-tools__submit_fix"],
+    mcpServers: { "fix-tools": fixServer },
+    ...(resumeSessionId ? { resume: resumeSessionId } : {}),
+    ...(abortController ? { abortController } : {}),
+  };
+}
+
 interface AttemptOutcome {
   summary: string | null;
   sessionId: string;
@@ -101,56 +141,48 @@ async function runAttempt(
 ): Promise<AttemptOutcome> {
   let sessionId = "";
 
-  for await (const message of query({
-    prompt,
-    options: {
-      cwd: checkoutDir,
-      model: "claude-sonnet-5",
-      maxTurns: MAX_TURNS_PER_ATTEMPT,
-      permissionMode: "acceptEdits",
-      // Same as reachVerdict: adaptive thinking, summarized for log
-      // readability.
-      thinking: { type: "adaptive", display: "summarized" },
-      // Read-only investigation, targeted Edit, and the one "I'm done" tool.
-      // Deliberately no Write (full-file overwrite, unnecessary for a scoped
-      // fix) and no Bash -- the Validation Gate is our own deterministic
-      // code, never something the agent can run itself.
-      allowedTools: [
-        "Read",
-        "Grep",
-        "Glob",
-        "Edit",
-        "mcp__fix-tools__submit_fix",
-      ],
-      mcpServers: { "fix-tools": fixServer },
-      ...(resumeSessionId ? { resume: resumeSessionId } : {}),
-      ...(abortController ? { abortController } : {}),
-    },
-  })) {
-    if ("session_id" in message && message.session_id) {
-      sessionId = message.session_id;
-    }
-    if (message.type === "assistant") {
-      for (const block of message.message.content) {
-        if (block.type === "thinking") {
-          log(formatThinking(block.thinking));
-          continue;
+  try {
+    for await (const message of query({
+      prompt,
+      options: buildFixQueryOptions(
+        checkoutDir,
+        fixServer,
+        resumeSessionId,
+        abortController,
+      ),
+    })) {
+      if ("session_id" in message && message.session_id) {
+        sessionId = message.session_id;
+      }
+      if (message.type === "assistant") {
+        for (const block of message.message.content) {
+          if (block.type === "thinking") {
+            log(formatThinking(block.thinking));
+            continue;
+          }
+          if (block.type !== "tool_use") {
+            continue;
+          }
+          if (block.name.endsWith("submit_fix")) {
+            const input = block.input as { summary: string };
+            return { summary: input.summary, sessionId };
+          }
+          if (isNoiseTool(block.name)) {
+            continue;
+          }
+          // Investigation and edit tools (Read/Grep/Glob/Edit) -- same
+          // lightweight visibility as reachVerdict, not full tracing.
+          log(formatToolUse(block.name, block.input, checkoutDir));
         }
-        if (block.type !== "tool_use") {
-          continue;
-        }
-        if (block.name.endsWith("submit_fix")) {
-          const input = block.input as { summary: string };
-          return { summary: input.summary, sessionId };
-        }
-        if (isNoiseTool(block.name)) {
-          continue;
-        }
-        // Investigation and edit tools (Read/Grep/Glob/Edit) -- same
-        // lightweight visibility as reachVerdict, not full tracing.
-        log(formatToolUse(block.name, block.input, checkoutDir));
       }
     }
+  } catch (error) {
+    // The SDK throws (rather than ending the stream) when this attempt's turn
+    // budget runs out. That is exactly the "didn't finish" case attemptFix
+    // already handles by resuming the same session and asking it to wrap up;
+    // without this catch that path was unreachable and the whole Fix Run
+    // failed instead.
+    if (!isMaxTurnsError(error)) throw error;
   }
 
   return { summary: null, sessionId };
@@ -161,6 +193,7 @@ async function commitAndPush(
   thread: ReviewThread,
   summary: string,
   dryRun: boolean,
+  push: () => Promise<void>,
 ): Promise<{ commitSha: string; patch: string }> {
   const git = simpleGit(checkoutDir);
   // A fresh clone has no local git identity -- set one rather than relying
@@ -179,7 +212,7 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>`;
   // dry-run skips.
   const result = await git.commit(message);
   if (!dryRun) {
-    await git.push();
+    await push();
   }
   const patch = await git.raw([
     "format-patch",
@@ -212,6 +245,12 @@ export async function attemptFix(
   dryRun = false,
   log: (line: string) => void = console.log,
   abortController?: AbortController,
+  // How to push a passing fix. A checkout made by checkoutPullRequestHead
+  // supplies its own (it holds the credential); the default suits a checkout
+  // whose remote already has whatever access it needs.
+  push: () => Promise<void> = async () => {
+    await simpleGit(checkoutDir).push();
+  },
 ): Promise<FixResult> {
   const fixServer = createSdkMcpServer({
     name: "fix-tools",
@@ -247,6 +286,7 @@ export async function attemptFix(
         thread,
         result.summary,
         dryRun,
+        push,
       );
       return {
         outcome: "fixed",

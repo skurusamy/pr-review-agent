@@ -1,4 +1,3 @@
-import { simpleGit } from "simple-git";
 import { createOctokit } from "./github/client.js";
 import { checkoutPullRequestHead } from "./github/checkout.js";
 import { fetchPrContext } from "./briefing/fetchPrContext.js";
@@ -26,24 +25,6 @@ export interface CodeReviewResult {
   headSha: string;
   review: CodeReview;
   markdown: string;
-}
-
-/**
- * The clone URL embeds the token, and git keeps it in .git/config. This
- * action reads other people's PRs and lets the model Read the checkout, so
- * the token must not be sitting in a file it can open. A Code Review never
- * pushes, so nothing after the clone needs the credential.
- */
-export async function stripRemoteCredentials(
-  dir: string,
-  owner: string,
-  repo: string,
-): Promise<void> {
-  await simpleGit(dir).remote([
-    "set-url",
-    "origin",
-    `https://github.com/${owner}/${repo}.git`,
-  ]);
 }
 
 /**
@@ -78,8 +59,6 @@ export async function runCodeReview(
   );
 
   try {
-    await stripRemoteCredentials(checkout.dir, owner, repo);
-
     log("Reviewing the code... (waiting for the model)");
     const review = await generateCodeReview(
       context,

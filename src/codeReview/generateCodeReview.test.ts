@@ -3,8 +3,8 @@ import { query } from "@anthropic-ai/claude-agent-sdk";
 import {
   CodeReviewIncompleteError,
   generateCodeReview,
-  isMaxTurnsError,
 } from "./generateReview.js";
+import { isMaxTurnsError } from "../agentSession.js";
 import type { PrContext } from "../briefing/fetchPrContext.js";
 
 // Only query() is faked; tool() and createSdkMcpServer() stay real so the

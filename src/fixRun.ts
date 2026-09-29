@@ -178,6 +178,7 @@ export async function runFix(options: FixRunOptions): Promise<void> {
           dryRun,
           tlog,
           abortController,
+          checkout.push,
         );
         if (fixResult.outcome === "fixed") {
           onEvent({

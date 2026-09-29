@@ -143,6 +143,9 @@ function makeDeps(remote: string, overrides: Partial<ApplyDeps> = {}) {
         dir,
         headRef: "main",
         headSha: (await simpleGit(dir).revparse(["HEAD"])).trim(),
+        push: async () => {
+          await simpleGit(dir).push("origin", "main");
+        },
         cleanup: () => rm(dir, { recursive: true, force: true }),
       };
     },

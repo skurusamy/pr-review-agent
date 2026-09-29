@@ -2,10 +2,12 @@ import {
   query,
   tool,
   createSdkMcpServer,
+  type Options,
 } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 import type { ReviewThread } from "../github/types.js";
 import { formatToolUse, formatThinking, isNoiseTool } from "../toolLog.js";
+import { isMaxTurnsError, lockedDown } from "../agentSession.js";
 
 export interface Verdict {
   verdict: "bug" | "not-a-bug";
@@ -85,6 +87,38 @@ positive, or something already addressed). When you have decided, call
 submit_verdict exactly once with your verdict and reasoning.`;
 }
 
+const VERDICT_TOOLS = ["Read", "Grep", "Glob"] as const;
+
+/**
+ * The SDK options for a Verdict session, a pure function so a test can pin
+ * the security-relevant parts (see agentSession.ts for why each is set). The
+ * session investigates a checkout of someone else's branch, so it may only
+ * read it: `tools` lists exactly Read, Grep and Glob (`allowedTools` alone
+ * would not remove Bash or Edit), no settings are loaded from the checkout,
+ * and the GitHub token is not in the session's environment.
+ */
+export function buildVerdictQueryOptions(
+  checkoutDir: string,
+  verdictServer: ReturnType<typeof createSdkMcpServer>,
+  abortController?: AbortController,
+  processEnv: NodeJS.ProcessEnv = process.env,
+): Options {
+  return {
+    cwd: checkoutDir,
+    model: "claude-sonnet-5",
+    maxTurns: MAX_TURNS,
+    // Adaptive: Claude decides when and how much to think. 'summarized'
+    // display keeps what we log readable -- the raw chain can be long
+    // prose, and this is a log line, not a transcript viewer.
+    thinking: { type: "adaptive", display: "summarized" },
+    ...lockedDown(VERDICT_TOOLS, processEnv),
+    // Custom SDK MCP tools are addressed as mcp__<serverName>__<toolName>.
+    allowedTools: [...VERDICT_TOOLS, "mcp__verdict-tools__submit_verdict"],
+    mcpServers: { "verdict-tools": verdictServer },
+    ...(abortController ? { abortController } : {}),
+  };
+}
+
 /**
  * Runs a single Claude Agent SDK loop, scoped to one review comment thread,
  * to reach a Verdict on it. The model can freely read the checked-out repo
@@ -103,55 +137,49 @@ export async function reachVerdict(
     tools: [submitVerdictTool],
   });
 
-  for await (const message of query({
-    prompt: buildPrompt(thread),
-    options: {
-      cwd: checkoutDir,
-      model: "claude-sonnet-5",
-      maxTurns: MAX_TURNS,
-      // Adaptive: Claude decides when and how much to think. 'summarized'
-      // display keeps what we log readable -- the raw chain can be long
-      // prose, and this is a log line, not a transcript viewer.
-      thinking: { type: "adaptive", display: "summarized" },
-      // Read-only investigation tools plus our one custom "answer" tool.
-      // Custom SDK MCP tools are addressed as mcp__<serverName>__<toolName>.
-      allowedTools: [
-        "Read",
-        "Grep",
-        "Glob",
-        "mcp__verdict-tools__submit_verdict",
-      ],
-      mcpServers: { "verdict-tools": verdictServer },
-      ...(abortController ? { abortController } : {}),
-    },
-  })) {
-    // An "assistant" SDKMessage wraps a real Anthropic Messages API message
-    // under `.message` (role, content blocks, stop_reason, usage) — the outer
-    // SDKMessage envelope is the harness's own bookkeeping, not part of what
-    // was actually said. We're scanning for tool_use and thinking content
-    // blocks, since those are the only places worth logging.
-    if (message.type === "assistant") {
-      for (const block of message.message.content) {
-        if (block.type === "thinking") {
-          log(formatThinking(block.thinking));
-          continue;
+  try {
+    for await (const message of query({
+      prompt: buildPrompt(thread),
+      options: buildVerdictQueryOptions(
+        checkoutDir,
+        verdictServer,
+        abortController,
+      ),
+    })) {
+      // An "assistant" SDKMessage wraps a real Anthropic Messages API message
+      // under `.message` (role, content blocks, stop_reason, usage) — the outer
+      // SDKMessage envelope is the harness's own bookkeeping, not part of what
+      // was actually said. We're scanning for tool_use and thinking content
+      // blocks, since those are the only places worth logging.
+      if (message.type === "assistant") {
+        for (const block of message.message.content) {
+          if (block.type === "thinking") {
+            log(formatThinking(block.thinking));
+            continue;
+          }
+          if (block.type !== "tool_use") {
+            continue;
+          }
+          if (block.name.endsWith("submit_verdict")) {
+            const input = block.input as Verdict;
+            return { verdict: input.verdict, reasoning: input.reasoning };
+          }
+          if (isNoiseTool(block.name)) {
+            continue;
+          }
+          // Investigation tools (Read/Grep/Glob) -- logged so there's some
+          // visibility into what the agent actually looked at, short of full
+          // tracing (that's what Langfuse would give, if it existed here).
+          log(formatToolUse(block.name, block.input, checkoutDir));
         }
-        if (block.type !== "tool_use") {
-          continue;
-        }
-        if (block.name.endsWith("submit_verdict")) {
-          const input = block.input as Verdict;
-          return { verdict: input.verdict, reasoning: input.reasoning };
-        }
-        if (isNoiseTool(block.name)) {
-          continue;
-        }
-        // Investigation tools (Read/Grep/Glob) -- logged so there's some
-        // visibility into what the agent actually looked at, short of full
-        // tracing (that's what Langfuse would give, if it existed here).
-        log(formatToolUse(block.name, block.input, checkoutDir));
       }
     }
+  } catch (error) {
+    // The SDK throws (rather than ending the stream) when the turn budget
+    // runs out. Without this, that would escape as a raw SDK error and fail
+    // the whole Fix Run, instead of the per-comment "skip it" the caller
+    // (and VerdictIncompleteError) exist for.
+    if (!isMaxTurnsError(error)) throw error;
   }
 
   throw new VerdictIncompleteError(

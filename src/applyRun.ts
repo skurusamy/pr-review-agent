@@ -296,7 +296,7 @@ async function pushFixes(
       );
     }
 
-    await git.push();
+    await checkout.push();
     log(`Pushed ${threads.length} fix commit(s) to ${checkout.headRef}.`);
     return shas;
   } finally {
