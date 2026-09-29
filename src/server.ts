@@ -14,6 +14,12 @@ import { FileRunStore, isRunId } from "./runRecord/runStore.js";
 import { RunRecorder } from "./runRecord/recorder.js";
 import { summarize } from "./runRecord/summary.js";
 import {
+  ApplyNotAllowedError,
+  applyRun,
+  assertApplicable,
+  githubApplyDeps,
+} from "./applyRun.js";
+import {
   DEFAULT_RUNS_MAX,
   pruneRuns,
   sweepOrphanedRuns,
@@ -71,6 +77,77 @@ app.get("/runs/:id", async (req, res) => {
     return;
   }
   res.json(record);
+});
+
+// Runs being applied right now, so two people (or two clicks) can't apply the
+// same dry run at once. In-process: fine for one server instance.
+const applying = new Set<string>();
+
+// Replays a dry run's saved results onto the PR (see applyRun). Streams the
+// same NDJSON log lines as the other endpoints, ending in a {kind: "result"}
+// line with the AppliedInfo, and writes that back onto the original record.
+// Deliberately not tied to the client staying connected: aborting half way
+// through a push would be worse than finishing.
+app.post("/runs/:id/apply", async (req, res) => {
+  const id = req.params.id;
+  const record = isRunId(id) ? await runStore.get(id) : undefined;
+  if (!record) {
+    res.status(404).json({ error: "No such run." });
+    return;
+  }
+  try {
+    assertApplicable(record);
+  } catch (error) {
+    const status =
+      error instanceof ApplyNotAllowedError && error.code === "already-applied"
+        ? 409
+        : 400;
+    res.status(status).json({ error: formatError(error) });
+    return;
+  }
+  if (applying.has(id)) {
+    res.status(409).json({ error: "This run is already being applied." });
+    return;
+  }
+  applying.add(id);
+
+  res.setHeader("Content-Type", "application/x-ndjson");
+  res.flushHeaders();
+  const send = (entry: { kind: string; text: string }): void => {
+    if (res.writableEnded) return;
+    res.write(`${JSON.stringify(entry)}\n`);
+  };
+
+  const label = `[apply ${id} ${record.pr.owner}/${record.pr.repo}#${record.pr.prNumber}]`;
+  console.log(`${label} started`);
+  const rawLog = [...record.rawLog];
+  const log = (line: string): void => {
+    const entry = { kind: classifyLogLine(line), text: line.trim() };
+    rawLog.push(entry);
+    send(entry);
+  };
+
+  try {
+    const octokit = createOctokit(secrets.githubToken);
+    const applied = await applyRun({
+      record,
+      deps: githubApplyDeps(octokit, record.pr, secrets.githubToken),
+      log,
+      // Saved as it goes, so a crash after the push still remembers it.
+      onProgress: (progress) =>
+        runStore.save({ ...record, rawLog, applied: progress }),
+    });
+    await runStore.save({ ...record, rawLog, applied });
+    send({ kind: "result", text: JSON.stringify(applied) });
+    send({ kind: "done", text: "" });
+    console.log(`${label} finished (complete=${applied.complete})`);
+  } catch (error) {
+    send({ kind: "error", text: formatError(error) });
+    console.log(`${label} failed: ${formatError(error)}`);
+  } finally {
+    applying.delete(id);
+    res.end();
+  }
 });
 
 app.post("/review", async (req, res) => {

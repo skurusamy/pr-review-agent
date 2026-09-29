@@ -22,7 +22,7 @@ export type CreatePendingReviewResult =
 // original thread (see Learning Notes for why), so idempotency can't be
 // checked via reply structure at all -- it has to be checked by scanning
 // comment bodies for this exact string.
-function marker(rootCommentId: number): string {
+export function marker(rootCommentId: number): string {
   return `<!-- pr-review-agent:comment-${rootCommentId} -->`;
 }
 

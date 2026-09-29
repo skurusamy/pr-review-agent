@@ -74,7 +74,10 @@ export function groupThreads(record) {
     },
     {
       key: "fixes",
-      title: record.dryRun ? "Fixes ready to push" : "Fixes pushed",
+      title:
+        record.dryRun && !record.applied?.complete
+          ? "Fixes ready to push"
+          : "Fixes pushed",
       threads: [],
     },
     { key: "skipped", title: "Skipped", threads: [] },
