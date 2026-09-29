@@ -1,0 +1,52 @@
+#output {
+  background: var(--log-bg);
+  color: var(--log-text);
+  padding: var(--space-4);
+  border-radius: var(--radius);
+  margin-top: var(--space-5);
+  max-height: 60vh;
+  overflow-y: auto;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+.log-line {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.log-thinking {
+  color: var(--log-thinking);
+  font-style: italic;
+  opacity: 0.85;
+}
+.log-tool {
+  color: var(--log-tool);
+}
+.log-verdict-bug {
+  color: var(--log-bug);
+  font-weight: 600;
+}
+.log-verdict-not-bug {
+  color: var(--log-ok);
+}
+.log-section {
+  color: var(--log-section);
+  font-weight: 700;
+  margin-top: var(--space-3);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--log-rule);
+}
+.log-success {
+  color: var(--log-ok);
+  font-weight: 600;
+}
+.log-warn {
+  color: var(--log-warn);
+}
+.log-error {
+  color: var(--log-bug);
+  font-weight: 700;
+}
+.log-info {
+  color: var(--log-info);
+}

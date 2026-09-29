@@ -1,0 +1,77 @@
+body {
+  font-family: var(--font-sans);
+  max-width: 640px;
+  margin: var(--space-6) auto;
+  padding: 0 var(--space-4);
+  color: var(--text);
+  background: var(--bg);
+}
+h1 {
+  font-size: 1.25rem;
+}
+label {
+  display: block;
+  margin-top: var(--space-4);
+  font-weight: 600;
+}
+input[type="text"] {
+  width: 100%;
+  padding: var(--space-2);
+  font-size: 1rem;
+  box-sizing: border-box;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+}
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+  font-weight: normal;
+}
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-top: var(--space-5);
+}
+button {
+  padding: 0.6rem 1.2rem;
+  font-size: 1rem;
+  cursor: pointer;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+}
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+button.secondary {
+  background: var(--bg);
+}
+button.stop {
+  background: var(--danger);
+  color: #fff;
+  border: 1px solid var(--danger-strong);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+}
+button.stop .stop-icon {
+  width: 0.7em;
+  height: 0.7em;
+  background: #fff;
+  border-radius: 2px;
+  display: inline-block;
+}
+#stop-button[hidden] {
+  display: none;
+}
+.error {
+  color: var(--danger);
+  margin-top: var(--space-4);
+}

@@ -10,4 +10,23 @@ export default tseslint.config(
   {
     ignores: ["dist/**", "node_modules/**"],
   },
+  {
+    // Browser code served from public/: ES modules, plus the globals a
+    // page has that Node doesn't. `mermaid` comes from the CDN <script>.
+    files: ["public/**/*.js"],
+    languageOptions: {
+      sourceType: "module",
+      globals: {
+        document: "readonly",
+        window: "readonly",
+        fetch: "readonly",
+        Blob: "readonly",
+        URL: "readonly",
+        AbortController: "readonly",
+        DOMException: "readonly",
+        TextDecoder: "readonly",
+        mermaid: "readonly",
+      },
+    },
+  },
 );

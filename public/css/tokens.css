@@ -1,0 +1,64 @@
+/* Design tokens. Every colour, space and type value used by the other
+   stylesheets comes from here, so the light/dark themes and future screens
+   (results view, history) share one vocabulary. */
+:root {
+  color-scheme: light dark;
+
+  /* Surfaces and text */
+  --bg: #ffffff;
+  --surface: #f6f8fa;
+  --border: #d0d7de;
+  --border-strong: #8c959f;
+  --text: #1f2328;
+  --text-muted: #59636e;
+  --code-bg: #eff1f3;
+
+  /* Status */
+  --accent: #0969da;
+  --danger: #cf222e;
+  --danger-strong: #b91c1c;
+  --success: #1a7f37;
+  --warning: #9a6700;
+
+  /* Terminal-style log panel: dark in both themes on purpose, the log
+     colour kinds were tuned against it. */
+  --log-bg: #111;
+  --log-text: #d1d5db;
+  --log-thinking: #7dd3fc;
+  --log-tool: #60a5fa;
+  --log-bug: #f87171;
+  --log-ok: #4ade80;
+  --log-section: #f3f4f6;
+  --log-rule: #333;
+  --log-warn: #fbbf24;
+  --log-info: #9ca3af;
+
+  /* Spacing, radius, type */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 3rem;
+  --radius: 6px;
+  --font-sans: system-ui, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --border: #30363d;
+    --border-strong: #6e7681;
+    --text: #e6edf3;
+    --text-muted: #9198a1;
+    --code-bg: #1f2630;
+
+    --accent: #4493f8;
+    --danger: #f85149;
+    --danger-strong: #da3633;
+    --success: #3fb950;
+    --warning: #d29922;
+  }
+}
