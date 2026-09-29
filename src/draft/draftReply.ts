@@ -33,6 +33,11 @@ export function hasMarkerForComment(
   return commentBody.includes(marker(rootCommentId));
 }
 
+/** The reply text without its hidden Agent Marker, for showing to a person. */
+export function stripMarker(body: string): string {
+  return body.replace(/\s*<!-- pr-review-agent:comment-\d+ -->\s*$/, "");
+}
+
 export function buildDraftReply(
   thread: ReviewThread,
   outcome: DraftOutcome,

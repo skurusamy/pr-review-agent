@@ -7,6 +7,8 @@ import type { Octokit } from "octokit";
 export interface Checkout {
   dir: string;
   headRef: string;
+  /** The PR head commit this checkout was cloned at. */
+  headSha: string;
   cleanup: () => Promise<void>;
 }
 
@@ -66,6 +68,7 @@ export async function checkoutPullRequestHead(
   return {
     dir,
     headRef: pr.head.ref,
+    headSha: pr.head.sha,
     cleanup: () => rm(dir, { recursive: true, force: true }),
   };
 }

@@ -12,8 +12,11 @@ import {
   hasExistingReply,
   createPendingReview,
   postFixConfirmation,
+  stripMarker,
   type DraftReplyEntry,
 } from "./draft/draftReply.js";
+import { classifyLogLine } from "./logFormat.js";
+import type { ReviewEvent } from "./runRecord/types.js";
 
 export interface ReviewRunOptions {
   owner: string;
@@ -34,6 +37,11 @@ export interface ReviewRunOptions {
    * completion regardless.
    */
   abortController?: AbortController;
+  /**
+   * Structured progress (per-thread verdicts, outcomes, log lines) alongside
+   * the text `log`. The text log is unchanged, so the CLI needs no handler.
+   */
+  onEvent?: (event: ReviewEvent) => void;
 }
 
 /**
@@ -52,6 +60,7 @@ export async function runReview(options: ReviewRunOptions): Promise<void> {
     githubToken,
     log = console.log,
     abortController,
+    onEvent = () => {},
   } = options;
   const octokit = createOctokit(githubToken);
 
@@ -73,11 +82,42 @@ export async function runReview(options: ReviewRunOptions): Promise<void> {
     githubToken,
   );
 
+  onEvent({
+    type: "run-started",
+    owner,
+    repo,
+    prNumber,
+    dryRun,
+    headSha: checkout.headSha,
+  });
+
   const draftEntries: DraftReplyEntry[] = [];
 
   try {
     for (const thread of threads) {
       const { rootComment } = thread;
+      const threadId = rootComment.id;
+      // Sends every line to the shared text log as before, and also files it
+      // under this thread, so "Show reasoning" needs no after-the-fact parsing.
+      const tlog = (line: string): void => {
+        log(line);
+        onEvent({
+          type: "thread-log",
+          threadId,
+          kind: classifyLogLine(line),
+          text: line.trim(),
+        });
+      };
+      onEvent({
+        type: "thread-started",
+        threadId,
+        path: rootComment.path,
+        line: rootComment.line ?? rootComment.originalLine,
+        outdated: rootComment.outdated,
+        reviewer: rootComment.author,
+        comment: rootComment.body,
+        url: rootComment.htmlUrl,
+      });
       log(
         `\n--- ${rootComment.path}:${rootComment.line ?? rootComment.originalLine} (${rootComment.htmlUrl}) ---`,
       );
@@ -90,7 +130,12 @@ export async function runReview(options: ReviewRunOptions): Promise<void> {
         rootComment.id,
       );
       if (alreadyHandled) {
-        log("Already handled in a previous run, skipping.");
+        tlog("Already handled in a previous run, skipping.");
+        onEvent({
+          type: "thread-outcome",
+          threadId,
+          outcome: { kind: "skipped", reason: "already-handled" },
+        });
         continue;
       }
 
@@ -99,38 +144,61 @@ export async function runReview(options: ReviewRunOptions): Promise<void> {
         verdict = await reachVerdict(
           checkout.dir,
           thread,
-          log,
+          tlog,
           abortController,
         );
       } catch (error) {
         if (error instanceof VerdictIncompleteError) {
-          log(`Could not reach a verdict: ${error.message}. Skipping.`);
+          tlog(`Could not reach a verdict: ${error.message}. Skipping.`);
+          onEvent({
+            type: "thread-outcome",
+            threadId,
+            outcome: { kind: "skipped", reason: "no-verdict" },
+          });
           continue;
         }
         throw error;
       }
-      log(`Verdict: ${verdict.verdict} -- ${verdict.reasoning}`);
+      tlog(`Verdict: ${verdict.verdict} -- ${verdict.reasoning}`);
+      onEvent({
+        type: "thread-verdict",
+        threadId,
+        verdict: verdict.verdict,
+        reasoning: verdict.reasoning,
+      });
 
       const action = decideAction(thread, verdict);
 
       if (action === "fix") {
-        log("Attempting a fix...");
+        tlog("Attempting a fix...");
         const fixResult = await attemptFix(
           checkout.dir,
           thread,
           verdict,
           dryRun,
-          log,
+          tlog,
           abortController,
         );
         if (fixResult.outcome === "fixed") {
-          log(
+          onEvent({
+            type: "thread-outcome",
+            threadId,
+            outcome: {
+              kind: "fix",
+              commitSha: fixResult.commitSha,
+              summary: fixResult.summary,
+              attempts: fixResult.attempts,
+              gateSteps: fixResult.gateSteps,
+              patch: fixResult.patch,
+            },
+          });
+          tlog(
             dryRun
               ? `[dry-run] Would push commit ${fixResult.commitSha}: ${fixResult.summary}`
               : `Pushed commit ${fixResult.commitSha}: ${fixResult.summary}`,
           );
           if (dryRun) {
-            log(
+            tlog(
               "[dry-run] Would post a confirmation reply marking this comment as handled.",
             );
           } else {
@@ -149,21 +217,34 @@ export async function runReview(options: ReviewRunOptions): Promise<void> {
             );
           }
         } else {
-          log(
+          tlog(
             `Fix Attempt exhausted after ${fixResult.attempts} attempts (${fixResult.lastFailedGate}); falling back to a draft reply.`,
           );
-          draftEntries.push(
-            buildDraftReply(thread, {
-              kind: "exhausted",
+          const entry = buildDraftReply(thread, {
+            kind: "exhausted",
+            failedGate: fixResult.lastFailedGate,
+          });
+          draftEntries.push(entry);
+          onEvent({
+            type: "thread-outcome",
+            threadId,
+            outcome: {
+              kind: "fix-failed",
+              attempts: fixResult.attempts,
               failedGate: fixResult.lastFailedGate,
-            }),
-          );
+              body: stripMarker(entry.body),
+            },
+          });
         }
       } else {
-        log("Not a bug; drafting a reply.");
-        draftEntries.push(
-          buildDraftReply(thread, { kind: "not-a-bug", verdict }),
-        );
+        tlog("Not a bug; drafting a reply.");
+        const entry = buildDraftReply(thread, { kind: "not-a-bug", verdict });
+        draftEntries.push(entry);
+        onEvent({
+          type: "thread-outcome",
+          threadId,
+          outcome: { kind: "draft", body: stripMarker(entry.body) },
+        });
       }
     }
   } finally {
