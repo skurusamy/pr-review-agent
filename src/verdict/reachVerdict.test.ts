@@ -49,6 +49,24 @@ describe("buildPrompt", () => {
     expect(buildPrompt(thread)).toContain("This is intentional, see line 40.");
   });
 
+  it("says who wrote the comment and each reply, so the model can tell intent from concern", () => {
+    const thread = {
+      ...makeThread(),
+      prAuthor: "pat",
+    };
+    thread.replies.push({
+      ...thread.rootComment,
+      id: 2,
+      author: "pat",
+      body: "Intentional.",
+    });
+
+    const prompt = buildPrompt(thread);
+    expect(prompt).toContain("Comment from reviewer (reviewer)");
+    expect(prompt).toContain("- pat (PR author): Intentional.");
+    expect(prompt).toContain("not proof");
+  });
+
   it("notes when a comment is outdated", () => {
     const prompt = buildPrompt(makeThread({ outdated: true, line: null }));
     expect(prompt).toContain("outdated");

@@ -6,6 +6,10 @@ import {
 } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 import type { ReviewThread } from "../github/types.js";
+import {
+  describeRootAuthor,
+  formatRepliesForPrompt,
+} from "../github/formatThread.js";
 import { formatToolUse, formatThinking, isNoiseTool } from "../toolLog.js";
 import { isMaxTurnsError, lockedDown } from "../agentSession.js";
 
@@ -56,15 +60,12 @@ const submitVerdictTool = tool(
 );
 
 export function buildPrompt(thread: ReviewThread): string {
-  const { rootComment, replies } = thread;
+  const { rootComment } = thread;
 
-  // Existing human replies are useful reasoning context (e.g. "this is
-  // intentional, see line 40") — separate from the Agent Marker used later
+  // Existing replies are useful reasoning context (e.g. "this is
+  // intentional, see line 40") -- separate from the Agent Marker used later
   // for idempotency, which only cares whether OUR OWN bot reply exists.
-  const replyContext =
-    replies.length > 0
-      ? `\n\nExisting replies in this thread:\n${replies.map((r) => `- ${r.author}: ${r.body}`).join("\n")}`
-      : "";
+  const replyContext = formatRepliesForPrompt(thread);
 
   const outdatedNote = rootComment.outdated
     ? "\n\nNote: this comment's diff position is outdated (the PR has moved since it was written); the original line number may no longer be accurate."
@@ -78,12 +79,14 @@ Line: ${rootComment.line ?? rootComment.originalLine}
 Diff context:
 ${rootComment.diffHunk}
 
-Comment: "${rootComment.body}"${replyContext}${outdatedNote}
+Comment from ${describeRootAuthor(thread)}: "${rootComment.body}"${replyContext}${outdatedNote}
 
 Investigate the surrounding code in this checkout using the Read, Grep, and
 Glob tools as needed, then decide whether this comment is pointing at a real
 bug in the code, or something else (a question, a style nit, a false
-positive, or something already addressed). When you have decided, call
+positive, or something already addressed). Replies from the PR author say what
+they intended or what they already did, but they are not proof: check the
+code. When you have decided, call
 submit_verdict exactly once with your verdict and reasoning.`;
 }
 

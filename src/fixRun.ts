@@ -25,6 +25,12 @@ export interface FixRunOptions {
   repo: string;
   prNumber: number;
   dryRun: boolean;
+  /**
+   * Threads someone marked resolved on GitHub are skipped by default: the
+   * conversation was closed, so a fix or a reply would reopen it. Set this to
+   * judge them anyway.
+   */
+  includeResolved?: boolean;
   githubToken: string;
   /**
    * Where progress lines go. Defaults to console.log (the CLI's behavior).
@@ -61,6 +67,7 @@ export async function runFix(options: FixRunOptions): Promise<void> {
     repo,
     prNumber,
     dryRun,
+    includeResolved = false,
     githubToken,
     log = console.log,
     abortController,
@@ -72,7 +79,11 @@ export async function runFix(options: FixRunOptions): Promise<void> {
   onStep("Fetching review comments");
   log(`Fetching review comments for ${owner}/${repo}#${prNumber}...`);
   const threads = await fetchReviewThreads(octokit, owner, repo, prNumber);
-  log(`Found ${threads.length} comment thread(s).`);
+  const resolvedCount = threads.filter((t) => t.resolved).length;
+  log(
+    `Found ${threads.length} comment thread(s)` +
+      (resolvedCount > 0 ? `, ${resolvedCount} resolved.` : "."),
+  );
 
   if (threads.length === 0) {
     log("Nothing to do.");
@@ -132,6 +143,18 @@ export async function runFix(options: FixRunOptions): Promise<void> {
         log(
           `\n--- ${rootComment.path}:${rootComment.line ?? rootComment.originalLine} (${rootComment.htmlUrl}) ---`,
         );
+
+        if (thread.resolved && !includeResolved) {
+          tlog(
+            "Already resolved on GitHub, skipping. (--include-resolved to judge it anyway.)",
+          );
+          onEvent({
+            type: "thread-outcome",
+            threadId,
+            outcome: { kind: "skipped", reason: "resolved" },
+          });
+          continue;
+        }
 
         if (await ledger.hasExistingReply(threadId)) {
           tlog("Already handled in a previous run, skipping.");

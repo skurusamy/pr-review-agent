@@ -156,7 +156,11 @@ app.get("/pr", async (req, res) => {
 });
 
 app.post("/fix", async (req, res) => {
-  const { prUrl, dryRun } = req.body as { prUrl?: string; dryRun?: boolean };
+  const { prUrl, dryRun, includeResolved } = req.body as {
+    prUrl?: string;
+    dryRun?: boolean;
+    includeResolved?: boolean;
+  };
   const pr = parseOrReject(res, prUrl ?? "");
   if (!pr) return;
 
@@ -173,6 +177,7 @@ app.post("/fix", async (req, res) => {
         ...pr,
         onStep: step,
         dryRun: dryRun ?? true,
+        includeResolved: includeResolved === true,
         githubToken: secrets.githubToken,
         log,
         onEvent: (event) => {

@@ -28,7 +28,7 @@ export type ThreadOutcome =
       failedGate: string;
       body: string;
     }
-  | { kind: "skipped"; reason: "already-handled" | "no-verdict" };
+  | { kind: "skipped"; reason: "already-handled" | "no-verdict" | "resolved" };
 
 export interface ThreadInfo {
   threadId: number;

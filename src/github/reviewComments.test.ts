@@ -45,6 +45,18 @@ describe("groupIntoThreads", () => {
     ]);
   });
 
+  it("carries the resolved flag and the PR author from GitHub's thread index", () => {
+    const raw = [comment({ id: 1 }), comment({ id: 2 })];
+
+    const threads = groupIntoThreads(raw, {
+      index: new Map([[1, { nodeId: "T1", resolved: true }]]),
+      prAuthor: "pat",
+    });
+
+    expect(threads.map((t) => t.resolved)).toEqual([true, false]);
+    expect(threads.every((t) => t.prAuthor === "pat")).toBe(true);
+  });
+
   it("returns a thread with no replies when nobody replied", () => {
     const raw = [comment({ id: 1, body: "root" })];
 

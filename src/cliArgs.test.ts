@@ -10,7 +10,19 @@ describe("parseArgs", () => {
       repo: "pr-review-agent",
       prNumber: 10,
       dryRun: false,
+      includeResolved: false,
     });
+  });
+
+  it("recognizes --include-resolved", () => {
+    const args = parseArgs([
+      "fix",
+      "skurusamy/pr-review-agent",
+      "10",
+      "--include-resolved",
+    ]);
+    expect(args.command === "fix" && args.includeResolved).toBe(true);
+    expect(args.command === "fix" && args.dryRun).toBe(false);
   });
 
   it("recognizes --dry-run", () => {

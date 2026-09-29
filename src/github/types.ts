@@ -18,4 +18,8 @@ export interface ReviewThread {
   rootComment: ReviewComment;
   /** Replies to the root comment, oldest first. */
   replies: ReviewComment[];
+  /** Whether someone marked the conversation resolved on GitHub. */
+  resolved?: boolean;
+  /** The PR author's login, so a prompt can say which replies are theirs. */
+  prAuthor?: string;
 }

@@ -24,6 +24,10 @@ _Avoid_: CI rerun, checks, verification
 A pending, unsubmitted reply the agent adds inside the original review comment's thread — used for a `not-a-bug` verdict, and as the fallback when a `bug` verdict exhausts its Fix Attempts without passing the Validation Gate. GitHub allows only one pending review per PR, so every Draft Reply from one Fix Run belongs to a single shared pending review; the replies are added to it through GitHub's GraphQL API, since the REST API cannot make a comment both pending and a reply. If a thread cannot be found, the Draft Reply falls back to a new comment on the same file and line.
 _Avoid_: pending comment, response, reply
 
+**Resolved thread**:
+A review conversation someone marked resolved on GitHub. A Fix Run skips it by default, because a Verdict, a fix or a reply would reopen a conversation that was closed on purpose; it is shown as skipped, and can be judged anyway on request (`--include-resolved`, or the UI's Include resolved switch). Distinct from an outdated comment, whose diff position has moved: an outdated comment is still judged, but only ever gets a Draft Reply.
+_Avoid_: closed thread, done
+
 **Agent Marker**:
 An HTML comment embedding the specific original comment's id (`<!-- pr-review-agent:comment-<id> -->`), placed in every Draft Reply body. Since a Draft Reply can't be a structural reply, idempotency is checked by scanning comment bodies for this exact marker rather than by reply/thread structure.
 _Avoid_: signature, flag, generic tag

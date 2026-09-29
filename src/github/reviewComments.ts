@@ -1,6 +1,7 @@
 import type { Octokit } from "octokit";
 import type { RestEndpointMethodTypes } from "@octokit/plugin-rest-endpoint-methods";
 import type { ReviewComment, ReviewThread } from "./types.js";
+import { fetchThreadIndex, type ThreadInfo } from "./threadIndex.js";
 
 type RawReviewComment = Pick<
   RestEndpointMethodTypes["pulls"]["listReviewComments"]["response"]["data"][number],
@@ -26,10 +27,19 @@ export async function fetchReviewThreads(
     pull_number: prNumber,
     per_page: 100,
   });
-  return groupIntoThreads(raw);
+  // REST has neither the resolved flag nor the PR author's login on a
+  // comment, so both come from their own calls.
+  const [index, pr] = await Promise.all([
+    fetchThreadIndex(octokit, owner, repo, prNumber),
+    octokit.rest.pulls.get({ owner, repo, pull_number: prNumber }),
+  ]);
+  return groupIntoThreads(raw, { index, prAuthor: pr.data.user?.login });
 }
 
-export function groupIntoThreads(raw: RawReviewComment[]): ReviewThread[] {
+export function groupIntoThreads(
+  raw: RawReviewComment[],
+  context: { index?: Map<number, ThreadInfo>; prAuthor?: string } = {},
+): ReviewThread[] {
   const roots = raw.filter((c) => c.in_reply_to_id == null);
   const repliesByRootId = new Map<number, RawReviewComment[]>();
   for (const c of raw) {
@@ -46,6 +56,8 @@ export function groupIntoThreads(raw: RawReviewComment[]): ReviewThread[] {
     replies: (repliesByRootId.get(Number(root.id)) ?? [])
       .sort((a, b) => a.created_at.localeCompare(b.created_at))
       .map(toReviewComment),
+    resolved: context.index?.get(Number(root.id))?.resolved ?? false,
+    ...(context.prAuthor ? { prAuthor: context.prAuthor } : {}),
   }));
 }
 

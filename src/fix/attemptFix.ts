@@ -7,6 +7,10 @@ import {
 import { z } from "zod";
 import { simpleGit, ResetMode, CleanOptions } from "simple-git";
 import type { ReviewThread } from "../github/types.js";
+import {
+  describeRootAuthor,
+  formatRepliesForPrompt,
+} from "../github/formatThread.js";
 import type { Verdict } from "../verdict/reachVerdict.js";
 import {
   runValidationGate,
@@ -57,7 +61,7 @@ const submitFixTool = tool(
   },
 );
 
-function buildFixPrompt(thread: ReviewThread, verdict: Verdict): string {
+export function buildFixPrompt(thread: ReviewThread, verdict: Verdict): string {
   const { rootComment } = thread;
   return `A reviewer left this comment on a pull request, and it's been judged to be a real bug:
 
@@ -67,12 +71,13 @@ Line: ${rootComment.line ?? rootComment.originalLine}
 Diff context:
 ${rootComment.diffHunk}
 
-Comment: "${rootComment.body}"
+Comment from ${describeRootAuthor(thread)}: "${rootComment.body}"${formatRepliesForPrompt(thread)}
 
 Why this is a bug: ${verdict.reasoning}
 
-Use Read/Grep/Glob to understand the surrounding code, then use Edit to fix
-the bug. Make the smallest change that actually fixes it -- don't refactor
+Read the whole thread: a reply may narrow or correct what the reviewer
+asked for. Use Read/Grep/Glob to understand the surrounding code, then use Edit
+to fix the bug. Make the smallest change that actually fixes it -- don't refactor
 unrelated code. When you're done, call submit_fix with a one-line summary
 of what you changed.`;
 }

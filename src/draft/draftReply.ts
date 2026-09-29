@@ -1,6 +1,7 @@
 import type { Octokit } from "octokit";
 import type { ReviewThread } from "../github/types.js";
 import type { Verdict } from "../verdict/reachVerdict.js";
+import { fetchThreadIndex } from "../github/threadIndex.js";
 
 export interface DraftReplyEntry {
   rootCommentId: number;
@@ -183,56 +184,6 @@ export async function postFixConfirmation(
   });
 }
 
-interface ReviewThreadsPage {
-  repository: {
-    pullRequest: {
-      reviewThreads: {
-        pageInfo: { hasNextPage: boolean; endCursor: string | null };
-        nodes: {
-          id: string;
-          comments: { nodes: { databaseId: number | null }[] };
-        }[];
-      };
-    };
-  };
-}
-
-/**
- * Maps each review thread's root comment id (the REST id the rest of the
- * agent uses) to the thread's GraphQL node id, which is what a reply needs.
- */
-export async function findThreadNodeIds(
-  octokit: Octokit,
-  owner: string,
-  repo: string,
-  prNumber: number,
-): Promise<Map<number, string>> {
-  const ids = new Map<number, string>();
-  let after: string | null = null;
-  for (;;) {
-    const page: ReviewThreadsPage = await octokit.graphql(
-      `query($owner: String!, $repo: String!, $number: Int!, $after: String) {
-        repository(owner: $owner, name: $repo) {
-          pullRequest(number: $number) {
-            reviewThreads(first: 100, after: $after) {
-              pageInfo { hasNextPage endCursor }
-              nodes { id comments(first: 1) { nodes { databaseId } } }
-            }
-          }
-        }
-      }`,
-      { owner, repo, number: prNumber, after },
-    );
-    const threads = page.repository.pullRequest.reviewThreads;
-    for (const thread of threads.nodes) {
-      const rootId = thread.comments.nodes[0]?.databaseId;
-      if (rootId != null) ids.set(rootId, thread.id);
-    }
-    if (!threads.pageInfo.hasNextPage) return ids;
-    after = threads.pageInfo.endCursor;
-  }
-}
-
 /**
  * Creates ONE pending review holding every entry -- not one review per
  * comment, since only one pending review per user per PR is allowed at all.
@@ -270,7 +221,10 @@ export async function createPendingReview(
     return { created: false, reason: "pending-review-exists" };
   }
 
-  const threadIds = await findThreadNodeIds(octokit, owner, repo, prNumber);
+  const threads = await fetchThreadIndex(octokit, owner, repo, prNumber);
+  const threadIds = new Map(
+    [...threads].map(([rootId, info]) => [rootId, info.nodeId]),
+  );
   const replies = entries.filter((e) => threadIds.has(e.rootCommentId));
   const lineComments = entries.filter((e) => !threadIds.has(e.rootCommentId));
 

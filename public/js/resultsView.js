@@ -195,7 +195,9 @@ function detailView(thread, run) {
         { class: "rv-sub" },
         outcome.reason === "already-handled"
           ? "Already handled in a previous run (Agent Marker found)."
-          : "The agent could not reach a verdict for this comment.",
+          : outcome.reason === "resolved"
+            ? "This conversation is resolved on GitHub, so it was skipped."
+            : "The agent could not reach a verdict for this comment.",
       ),
     reasoningView(thread),
   );

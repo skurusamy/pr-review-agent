@@ -23,6 +23,8 @@ const stopButton = document.getElementById("stop-button");
 const prUrlInput = document.getElementById("prUrl");
 const dryRunInput = document.getElementById("dryRun");
 const dryRunRow = document.getElementById("dryrun-row");
+const resolvedInput = document.getElementById("includeResolved");
+const resolvedRow = document.getElementById("resolved-row");
 const statusEl = document.getElementById("status");
 const statusText = document.getElementById("status-text");
 const modeInputs = document.querySelectorAll('input[name="mode"]');
@@ -74,6 +76,7 @@ function syncMode() {
   runButton.textContent = MODES[mode].label;
   // Only Fix comments writes anything; Brief and Review are read-only.
   dryRunRow.hidden = mode !== "fix";
+  resolvedRow.hidden = mode !== "fix";
 }
 
 for (const input of modeInputs) input.addEventListener("change", syncMode);
@@ -86,7 +89,11 @@ const ACTIONS = {
     try {
       await streamRequest(
         "/fix",
-        { prUrl: prUrlInput.value, dryRun: dryRunInput.checked },
+        {
+          prUrl: prUrlInput.value,
+          dryRun: dryRunInput.checked,
+          includeResolved: resolvedInput.checked,
+        },
         appendLine,
         signal,
         { onRun: startRun, onEvent: applyFixEvent, onStep: applyStep },

@@ -4,6 +4,7 @@ export interface FixCommandArgs {
   repo: string;
   prNumber: number;
   dryRun: boolean;
+  includeResolved: boolean;
 }
 
 export interface BriefCommandArgs {
@@ -27,7 +28,7 @@ export type CliArgs = FixCommandArgs | BriefCommandArgs | ReviewCommandArgs;
 const USAGE = [
   "Usage: pr-review-agent brief <owner/repo> <pr-number> [--post]",
   "   or: pr-review-agent review <owner/repo> <pr-number> [--post]",
-  "   or: pr-review-agent fix <owner/repo> <pr-number> [--dry-run]",
+  "   or: pr-review-agent fix <owner/repo> <pr-number> [--dry-run] [--include-resolved]",
 ].join("\n");
 
 function parseOwnerRepoAndPr(
@@ -71,6 +72,7 @@ export function parseArgs(argv: string[]): CliArgs {
       repo,
       prNumber,
       dryRun: rest.includes("--dry-run"),
+      includeResolved: rest.includes("--include-resolved"),
     };
   }
 

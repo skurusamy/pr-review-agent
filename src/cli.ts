@@ -29,6 +29,7 @@ async function main(): Promise<void> {
       repo: args.repo,
       prNumber: args.prNumber,
       dryRun: args.dryRun,
+      includeResolved: args.includeResolved,
       githubToken,
       log,
     });
