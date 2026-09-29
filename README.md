@@ -44,7 +44,7 @@ If the results look right, click **Apply this run** in the results view. It repl
 
 Apply is only available while that run's results are on screen: reloading the page loses the way back to it. The run itself stays saved under `data/runs`, but the UI has no list to reopen it from.
 
-See [CONTEXT.md](./CONTEXT.md) for the project's vocabulary, the [wayfinder map](https://github.com/skurusamy/pr-review-agent/issues/1) for how this is being built, and the [Agent Blueprint](https://claude.ai/artifact/RjzLkJ3ys8nY3Uken1woEw) for an interactive walkthrough of the tools, the Claude Agent SDK harness, and the step-by-step flow.
+See [CONTEXT.md](./CONTEXT.md) for the project's vocabulary, the [wayfinder map](https://github.com/skurusamy/pr-review-agent/issues/1) for how this is being built, and the [Agent Blueprint](https://claude.ai/artifact/RjzLkJ3ys8nY3Uken1woEw) for an interactive, step-by-step walkthrough of all three actions, plus the web layer, the Claude Agent SDK harness, how each model session is locked down, every tool, and where each piece lives in the code.
 
 ## Limits
 
