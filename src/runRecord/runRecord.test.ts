@@ -159,3 +159,103 @@ describe("RunRecorder", () => {
     });
   });
 });
+
+describe("run history helpers", () => {
+  const record = (id: string, extra: Partial<RunRecord> = {}): RunRecord => ({
+    ...base,
+    id,
+    ...extra,
+  });
+
+  it("summarize drops logs and patches and tallies outcomes", async () => {
+    const { summarize } = await import("./summary.js");
+    const thread = (
+      threadId: number,
+      outcome?: RunRecord["threads"][number]["outcome"],
+    ) => ({
+      threadId,
+      path: "a",
+      line: 1,
+      outdated: false,
+      reviewer: "r",
+      comment: "c",
+      url: "u",
+      log: [{ kind: "info" as const, text: "x" }],
+      ...(outcome ? { outcome } : {}),
+    });
+    const summary = summarize(
+      record("20260929-100000-aaaa", {
+        dryRun: true,
+        rawLog: [{ kind: "info", text: "line" }],
+        threads: [
+          thread(1, {
+            kind: "fix",
+            commitSha: "s",
+            summary: "x",
+            attempts: 1,
+            gateSteps: [],
+            patch: "PATCH",
+          }),
+          thread(2, { kind: "draft", body: "b" }),
+          thread(3, {
+            kind: "fix-failed",
+            attempts: 3,
+            failedGate: "test",
+            body: "b",
+          }),
+          thread(4, { kind: "skipped", reason: "already-handled" }),
+          thread(5),
+        ],
+      }),
+    );
+    expect(summary.tally).toEqual({
+      threads: 5,
+      fixes: 1,
+      drafts: 2,
+      skipped: 1,
+    });
+    expect(summary.dryRun).toBe(true);
+    expect(JSON.stringify(summary)).not.toContain("PATCH");
+    expect(summary).not.toHaveProperty("rawLog");
+    expect(summary).not.toHaveProperty("threads");
+  });
+
+  it("summarize gives briefings no tally", async () => {
+    const { summarize } = await import("./summary.js");
+    const summary = summarize(
+      record("20260929-100000-bbbb", { kind: "briefing" }),
+    );
+    expect(summary.tally).toBeUndefined();
+  });
+
+  it("pruneRuns keeps only the newest max records", async () => {
+    const { pruneRuns } = await import("./maintenance.js");
+    const store = new FileRunStore(await mkdtemp(join(tmpdir(), "runs-")));
+    for (const id of [
+      "20260929-100000-aaaa",
+      "20260929-110000-bbbb",
+      "20260929-120000-cccc",
+    ]) {
+      await store.save(record(id));
+    }
+    expect(await pruneRuns(store, 2)).toBe(1);
+    expect(await store.listIds()).toEqual([
+      "20260929-120000-cccc",
+      "20260929-110000-bbbb",
+    ]);
+    expect(await pruneRuns(store, 2)).toBe(0);
+  });
+
+  it("sweepOrphanedRuns stops running records and leaves finished ones alone", async () => {
+    const { sweepOrphanedRuns } = await import("./maintenance.js");
+    const store = new FileRunStore(await mkdtemp(join(tmpdir(), "runs-")));
+    await store.save(record("20260929-100000-aaaa", { status: "running" }));
+    await store.save(record("20260929-110000-bbbb", { status: "completed" }));
+    expect(await sweepOrphanedRuns(store)).toBe(1);
+    expect(await store.get("20260929-100000-aaaa")).toMatchObject({
+      status: "stopped",
+      error: expect.stringContaining("restarted"),
+    });
+    expect((await store.get("20260929-110000-bbbb"))?.status).toBe("completed");
+  });
+});

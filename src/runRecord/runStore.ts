@@ -1,4 +1,11 @@
-import { mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  readdir,
+  readFile,
+  rename,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { randomBytes } from "node:crypto";
 import { join } from "node:path";
 import type { RunRecord } from "./types.js";
@@ -10,8 +17,11 @@ import type { RunRecord } from "./types.js";
 export interface RunStore {
   save(record: RunRecord): Promise<void>;
   get(id: string): Promise<RunRecord | undefined>;
+  /** Ids of every saved run, newest first, without reading the records. */
+  listIds(): Promise<string[]>;
   /** Newest first. */
   list(): Promise<RunRecord[]>;
+  delete(id: string): Promise<void>;
 }
 
 const ID_PATTERN = /^\d{8}-\d{6}-[0-9a-f]{4}$/;
@@ -59,7 +69,7 @@ export class FileRunStore implements RunStore {
     }
   }
 
-  async list(): Promise<RunRecord[]> {
+  async listIds(): Promise<string[]> {
     let names: string[];
     try {
       names = await readdir(this.dir);
@@ -67,12 +77,21 @@ export class FileRunStore implements RunStore {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
       throw error;
     }
-    const ids = names
+    return names
       .filter((n) => n.endsWith(".json"))
       .map((n) => n.slice(0, -".json".length))
       .filter(isRunId)
       .sort()
       .reverse();
+  }
+
+  async delete(id: string): Promise<void> {
+    if (!isRunId(id)) return;
+    await rm(join(this.dir, `${id}.json`), { force: true });
+  }
+
+  async list(): Promise<RunRecord[]> {
+    const ids = await this.listIds();
     const records = await Promise.all(ids.map((id) => this.get(id)));
     return records.filter((r): r is RunRecord => r !== undefined);
   }

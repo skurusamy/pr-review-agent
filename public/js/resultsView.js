@@ -197,16 +197,24 @@ function detailView(thread, run) {
   );
 }
 
+function savedNote(run) {
+  const when = new Date(run.startedAt).toLocaleString();
+  return `Saved run from ${when}${run.status === "running" ? " (still running)" : ""}.`;
+}
+
 function banner(run) {
   const parts = [];
+  if (run.saved) parts.push(savedNote(run));
   if (run.status === "failed") {
     return h(
       "div",
       { class: "rv-banner failed" },
-      `Run failed${run.error ? `: ${run.error}` : "."}`,
+      [...parts, `Run failed${run.error ? `: ${run.error}` : "."}`].join(" "),
     );
   }
-  if (run.status === "stopped") parts.push("Stopped.");
+  if (run.status === "stopped") {
+    parts.push(run.error ? `Stopped: ${run.error}` : "Stopped.");
+  }
   parts.push(
     run.dryRun === undefined
       ? ""
@@ -236,9 +244,13 @@ function render() {
       ),
     );
   } else {
+    // A live run follows its newest thread; a saved one has nothing new
+    // coming, so it opens on the first thread the list shows.
+    const fallback = run.saved
+      ? groupThreads(run)[0].threads[0]
+      : run.threads[run.threads.length - 1];
     const current =
-      run.threads.find((t) => t.threadId === selectedId) ??
-      run.threads[run.threads.length - 1];
+      run.threads.find((t) => t.threadId === selectedId) ?? fallback;
     const list = h("nav", { class: "rv-list" });
     for (const group of groupThreads(run)) {
       list.append(h("h3", {}, `${group.title} (${group.threads.length})`));
@@ -297,6 +309,16 @@ export function applyReviewEvent(event) {
 export function finishRun(status, error) {
   if (!record) return;
   record = { ...record, status, ...(error ? { error } : {}) };
+  render();
+}
+
+/** Shows a saved RunRecord, read-only, in the same view a live run uses. */
+export function showRecord(saved) {
+  record = { ...saved, saved: true };
+  selectedId = null;
+  reasoningOpen.clear();
+  patchExpanded.clear();
+  showTabs("Summary", summary);
   render();
 }
 

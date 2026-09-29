@@ -10,6 +10,7 @@
     <link rel="stylesheet" href="css/log.css" />
     <link rel="stylesheet" href="css/briefing.css" />
     <link rel="stylesheet" href="css/results.css" />
+    <link rel="stylesheet" href="css/history.css" />
     <script type="module" src="js/main.js"></script>
   </head>
   <body>
@@ -41,6 +42,17 @@
         </button>
       </div>
     </form>
+
+    <details id="history">
+      <summary>History (<span id="history-count">0</span>)</summary>
+      <input
+        type="text"
+        id="history-filter"
+        placeholder="Filter by repo or PR number"
+        aria-label="Filter history"
+      />
+      <div id="history-list"></div>
+    </details>
 
     <div id="error" class="error" hidden></div>
     <div id="results-tabs" role="tablist" hidden>
