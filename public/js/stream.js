@@ -7,7 +7,11 @@ export function isAbortError(err) {
 // after the whole request finishes. /brief also sends one
 // {kind: "result"} line carrying the rendered Markdown -- everything
 // else is a progress line for onLine to render.
-export async function streamRequest(url, body, onLine, signal) {
+//
+// It also carries {kind: "run", text: <run id>} once at the start and, for
+// /review, {kind: "event", event: <ReviewEvent>} lines; both go to the
+// optional handlers and are otherwise ignored.
+export async function streamRequest(url, body, onLine, signal, handlers = {}) {
   const response = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -35,6 +39,14 @@ export async function streamRequest(url, body, onLine, signal) {
       if (!raw) continue;
       const entry = JSON.parse(raw);
       if (entry.kind === "done") continue;
+      if (entry.kind === "run") {
+        handlers.onRun?.(entry.text);
+        continue;
+      }
+      if (entry.kind === "event") {
+        handlers.onEvent?.(entry.event);
+        continue;
+      }
       if (entry.kind === "error") throw new Error(entry.text);
       if (entry.kind === "result") {
         result = entry.text;

@@ -10,6 +10,8 @@ import { createOctokit } from "./github/client.js";
 import { postBriefingComment } from "./briefing/postBriefingComment.js";
 import { classifyLogLine } from "./logFormat.js";
 import { formatError } from "./errorLog.js";
+import { FileRunStore, isRunId } from "./runRecord/runStore.js";
+import { RunRecorder } from "./runRecord/recorder.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -25,14 +27,34 @@ const PORT = Number(process.env.PORT ?? 4127);
 // to "before listening" since there's no per-invocation moment to check.
 const secrets = loadSecrets();
 
-// A small counter, not a UUID -- this only needs to disambiguate overlapping
-// requests in one terminal's output (e.g. a second click before the first
-// finished), not identify anything across restarts.
+// A small counter, only for disambiguating overlapping requests in this
+// terminal's output. A run's durable identity is its RunRecorder id.
 let requestCounter = 0;
+
+// One JSON file per run. Ephemeral on Cloud Run's disk until a real backend
+// replaces FileRunStore behind the RunStore interface.
+const runStore = new FileRunStore(
+  process.env.RUNS_DIR ?? join(__dirname, "..", "data", "runs"),
+);
 
 const app = express();
 app.use(express.json());
 app.use(express.static(join(__dirname, "..", "public")));
+
+app.get("/runs", async (_req, res) => {
+  res.json(await runStore.list());
+});
+
+app.get("/runs/:id", async (req, res) => {
+  const record = isRunId(req.params.id)
+    ? await runStore.get(req.params.id)
+    : undefined;
+  if (!record) {
+    res.status(404).json({ error: "No such run." });
+    return;
+  }
+  res.json(record);
+});
 
 app.post("/review", async (req, res) => {
   const { prUrl, dryRun } = req.body as { prUrl?: string; dryRun?: boolean };
@@ -79,13 +101,22 @@ app.post("/review", async (req, res) => {
     }
   });
 
-  const send = (entry: { kind: string; text: string }): void => {
+  const send = (entry: { kind: string; [key: string]: unknown }): void => {
     // The client may already be gone (that's exactly why we'd be aborting)
     // -- writing to an ended response throws, and that throw has nothing to
     // do with the run itself, so it shouldn't surface as this run's error.
     if (res.writableEnded) return;
     res.write(`${JSON.stringify(entry)}\n`);
   };
+
+  // The run's durable record: saved as it progresses, so history survives a
+  // crash or Stop. Its id goes to the client first thing.
+  const recorder = new RunRecorder(runStore, {
+    kind: "review",
+    pr: reference,
+  });
+  await recorder.start();
+  send({ kind: "run", text: recorder.id });
 
   try {
     await runReview({
@@ -94,16 +125,27 @@ app.post("/review", async (req, res) => {
       prNumber: reference.prNumber,
       dryRun: dryRun ?? true,
       githubToken: secrets.githubToken,
-      log: (line) => send({ kind: classifyLogLine(line), text: line.trim() }),
+      log: (line) => {
+        const entry = { kind: classifyLogLine(line), text: line.trim() };
+        recorder.log(entry);
+        send(entry);
+      },
+      onEvent: (event) => {
+        recorder.event(event);
+        send({ kind: "event", event });
+      },
       abortController,
     });
+    await recorder.finish("completed");
     send({ kind: "done", text: "" });
     console.log(`${label} finished`);
   } catch (error) {
     if (!abortController.signal.aborted) {
+      await recorder.finish("failed", formatError(error));
       send({ kind: "error", text: formatError(error) });
       console.log(`${label} failed: ${formatError(error)}`);
     } else {
+      await recorder.finish("stopped");
       console.log(`${label} stopped`);
     }
   } finally {
@@ -148,23 +190,38 @@ app.post("/brief", async (req, res) => {
     res.write(`${JSON.stringify(entry)}\n`);
   };
 
+  const recorder = new RunRecorder(runStore, {
+    kind: "briefing",
+    pr: reference,
+  });
+  await recorder.start();
+  send({ kind: "run", text: recorder.id });
+
   try {
     const markdown = await runBrief({
       owner: reference.owner,
       repo: reference.repo,
       prNumber: reference.prNumber,
       githubToken: secrets.githubToken,
-      log: (line) => send({ kind: classifyLogLine(line), text: line.trim() }),
+      log: (line) => {
+        const entry = { kind: classifyLogLine(line), text: line.trim() };
+        recorder.log(entry);
+        send(entry);
+      },
       abortController,
     });
+    recorder.setBriefing(markdown);
+    await recorder.finish("completed");
     send({ kind: "result", text: markdown });
     send({ kind: "done", text: "" });
     console.log(`${label} finished`);
   } catch (error) {
     if (!abortController.signal.aborted) {
+      await recorder.finish("failed", formatError(error));
       send({ kind: "error", text: formatError(error) });
       console.log(`${label} failed: ${formatError(error)}`);
     } else {
+      await recorder.finish("stopped");
       console.log(`${label} stopped`);
     }
   } finally {

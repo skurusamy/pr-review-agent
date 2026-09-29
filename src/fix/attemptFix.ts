@@ -14,7 +14,16 @@ import {
 import { formatToolUse, formatThinking, isNoiseTool } from "../toolLog.js";
 
 export type FixResult =
-  | { outcome: "fixed"; commitSha: string; summary: string }
+  | {
+      outcome: "fixed";
+      commitSha: string;
+      summary: string;
+      attempts: number;
+      /** Gate steps that ran and passed, in order. */
+      gateSteps: string[];
+      /** The fix commit as a full `git format-patch` -- what survives a Dry Run's deleted checkout. */
+      patch: string;
+    }
   | { outcome: "exhausted"; attempts: number; lastFailedGate: string };
 
 // The outer retry cap (decided earlier, alongside the Validation Gate
@@ -152,7 +161,7 @@ async function commitAndPush(
   thread: ReviewThread,
   summary: string,
   dryRun: boolean,
-): Promise<string> {
+): Promise<{ commitSha: string; patch: string }> {
   const git = simpleGit(checkoutDir);
   // A fresh clone has no local git identity -- set one rather than relying
   // on whatever (if anything) is configured globally on the machine this runs on.
@@ -172,7 +181,13 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>`;
   if (!dryRun) {
     await git.push();
   }
-  return result.commit;
+  const patch = await git.raw([
+    "format-patch",
+    "-1",
+    "--stdout",
+    result.commit,
+  ]);
+  return { commitSha: result.commit, patch };
 }
 
 // Discards a failed attempt's partial edits so they don't bleed into the
@@ -227,13 +242,20 @@ export async function attemptFix(
 
     const gate = await runValidationGate(checkoutDir);
     if (gate.passed) {
-      const commitSha = await commitAndPush(
+      const { commitSha, patch } = await commitAndPush(
         checkoutDir,
         thread,
         result.summary,
         dryRun,
       );
-      return { outcome: "fixed", commitSha, summary: result.summary };
+      return {
+        outcome: "fixed",
+        commitSha,
+        summary: result.summary,
+        attempts: attempt,
+        gateSteps: gate.ranGates,
+        patch,
+      };
     }
 
     lastFailedGate = gate.failedGate ?? lastFailedGate;
