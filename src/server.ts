@@ -5,6 +5,9 @@ import express from "express";
 import { loadSecrets } from "./secrets.js";
 import { parsePrUrl } from "./prUrl.js";
 import { runReview } from "./reviewRun.js";
+import { runBrief } from "./briefRun.js";
+import { createOctokit } from "./github/client.js";
+import { postBriefingComment } from "./briefing/postBriefingComment.js";
 import { classifyLogLine } from "./logFormat.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -69,6 +72,84 @@ app.post("/review", async (req, res) => {
     });
   } finally {
     res.end();
+  }
+});
+
+app.post("/brief", async (req, res) => {
+  const { prUrl } = req.body as { prUrl?: string };
+
+  let reference;
+  try {
+    reference = parsePrUrl(prUrl ?? "");
+  } catch (error) {
+    res
+      .status(400)
+      .json({ error: error instanceof Error ? error.message : String(error) });
+    return;
+  }
+
+  // Same streamed-NDJSON shape as /review (see the comment there); the
+  // final rendered Markdown rides as one {kind: "result"} line rather than
+  // a separate response, so this endpoint stays a single request/response
+  // like /review instead of needing a second round trip to fetch the result.
+  res.setHeader("Content-Type", "application/x-ndjson");
+  res.flushHeaders();
+
+  const send = (entry: { kind: string; text: string }): void => {
+    res.write(`${JSON.stringify(entry)}\n`);
+  };
+
+  try {
+    const markdown = await runBrief({
+      owner: reference.owner,
+      repo: reference.repo,
+      prNumber: reference.prNumber,
+      githubToken: secrets.githubToken,
+      log: (line) => send({ kind: classifyLogLine(line), text: line.trim() }),
+    });
+    send({ kind: "result", text: markdown });
+    send({ kind: "done", text: "" });
+  } catch (error) {
+    send({
+      kind: "error",
+      text: error instanceof Error ? error.message : String(error),
+    });
+  } finally {
+    res.end();
+  }
+});
+
+app.post("/brief/post", async (req, res) => {
+  const { prUrl, markdown } = req.body as { prUrl?: string; markdown?: string };
+
+  let reference;
+  try {
+    reference = parsePrUrl(prUrl ?? "");
+  } catch (error) {
+    res
+      .status(400)
+      .json({ error: error instanceof Error ? error.message : String(error) });
+    return;
+  }
+  if (!markdown) {
+    res.status(400).json({ error: "Missing markdown to post." });
+    return;
+  }
+
+  try {
+    const octokit = createOctokit(secrets.githubToken);
+    const { url } = await postBriefingComment(
+      octokit,
+      reference.owner,
+      reference.repo,
+      reference.prNumber,
+      markdown,
+    );
+    res.json({ url });
+  } catch (error) {
+    res
+      .status(500)
+      .json({ error: error instanceof Error ? error.message : String(error) });
   }
 });
 

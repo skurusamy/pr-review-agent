@@ -3,6 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <title>pr-review-agent</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
     <style>
       body {
         font-family: system-ui, sans-serif;
@@ -32,8 +33,13 @@
         margin-top: 1rem;
         font-weight: normal;
       }
-      button {
+      .button-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem;
         margin-top: 1.5rem;
+      }
+      button {
         padding: 0.6rem 1.2rem;
         font-size: 1rem;
         cursor: pointer;
@@ -41,6 +47,10 @@
       button:disabled {
         cursor: not-allowed;
         opacity: 0.6;
+      }
+      button.secondary {
+        background: #fff;
+        border: 1px solid #999;
       }
       #output {
         background: #111;
@@ -98,6 +108,34 @@
         color: #b00020;
         margin-top: 1rem;
       }
+      #briefing-actions {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        margin-top: 1rem;
+      }
+      /* An ID selector's display:flex above beats the browser's own
+         [hidden] { display: none } (an attribute selector loses that
+         specificity fight), so the panel would stay visible even while
+         `hidden` is set unless this rule wins the tie back. */
+      #briefing-actions[hidden] {
+        display: none;
+      }
+      #post-status {
+        font-size: 0.9rem;
+        color: #444;
+      }
+      #diagram {
+        background: #fff;
+        border: 1px solid #ddd;
+        border-radius: 6px;
+        padding: 1rem;
+        margin-top: 1rem;
+        overflow-x: auto;
+      }
+      #diagram svg {
+        max-width: 100%;
+      }
     </style>
   </head>
   <body>
@@ -117,24 +155,52 @@
         Dry run (compute everything, but don't push or write to GitHub)
       </label>
 
-      <button type="submit" id="submit-button">Run review</button>
+      <div class="button-row">
+        <button type="submit" id="submit-button">Run review</button>
+        <button type="button" id="brief-button" class="secondary">
+          Generate PR Briefing
+        </button>
+      </div>
     </form>
 
     <div id="error" class="error" hidden></div>
     <div id="output" hidden></div>
+    <div id="diagram" hidden></div>
+
+    <div id="briefing-actions" hidden>
+      <button type="button" id="download-button" class="secondary">
+        Download .md
+      </button>
+      <button type="button" id="post-button" class="secondary">
+        Post to GitHub
+      </button>
+      <span id="post-status"></span>
+    </div>
 
     <script>
       const form = document.getElementById("review-form");
       const submitButton = document.getElementById("submit-button");
+      const briefButton = document.getElementById("brief-button");
       const output = document.getElementById("output");
       const errorBox = document.getElementById("error");
+      const diagramBox = document.getElementById("diagram");
+      const briefingActions = document.getElementById("briefing-actions");
+      const downloadButton = document.getElementById("download-button");
+      const postButton = document.getElementById("post-button");
+      const postStatus = document.getElementById("post-status");
+      const prUrlInput = document.getElementById("prUrl");
+      const dryRunInput = document.getElementById("dryRun");
+
+      mermaid.initialize({ startOnLoad: false, theme: "default" });
+
+      // The one PR Briefing currently on screen -- what "Download .md" and
+      // "Post to GitHub" act on. Generating a new Briefing (or running a
+      // review) clears it, since posting a stale one for a different PR
+      // would be a real bug, not just a stale UI.
+      let currentBriefing = null;
 
       function appendLine(kind, text) {
         if (!text) return;
-        // Reveal the terminal panel on its first real line, not on submit --
-        // an error that happens before any log line arrives (a bad PR URL,
-        // a network failure) should show only the error message, not an
-        // empty black box next to it.
         output.hidden = false;
         const line = document.createElement("div");
         line.className = `log-line log-${kind}`;
@@ -143,65 +209,178 @@
         output.scrollTop = output.scrollHeight;
       }
 
-      form.addEventListener("submit", async (event) => {
-        event.preventDefault();
-        submitButton.disabled = true;
-        submitButton.textContent = "Running...";
+      function showError(err) {
+        errorBox.textContent = err instanceof Error ? err.message : String(err);
+        errorBox.hidden = false;
+      }
+
+      function resetPanels() {
         errorBox.hidden = true;
         output.textContent = "";
         output.hidden = true;
+        diagramBox.hidden = true;
+        diagramBox.innerHTML = "";
+        briefingActions.hidden = true;
+        postStatus.textContent = "";
+        currentBriefing = null;
+      }
 
-        const prUrl = document.getElementById("prUrl").value;
-        const dryRun = document.getElementById("dryRun").checked;
+      function setBusy(busy) {
+        submitButton.disabled = busy;
+        briefButton.disabled = busy;
+      }
+
+      // Shared by /review and /brief: both stream newline-delimited JSON,
+      // one object per log line, so progress shows up live instead of only
+      // after the whole request finishes. /brief also sends one
+      // {kind: "result"} line carrying the rendered Markdown -- everything
+      // else is a progress line for onLine to render.
+      async function streamRequest(url, body, onLine) {
+        const response = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+
+        if (!response.ok || !response.body) {
+          const data = await response.json().catch(() => ({}));
+          throw new Error(data.error ?? `Request failed (${response.status})`);
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        let result = null;
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() ?? "";
+          for (const raw of lines) {
+            if (!raw) continue;
+            const entry = JSON.parse(raw);
+            if (entry.kind === "done") continue;
+            if (entry.kind === "error") throw new Error(entry.text);
+            if (entry.kind === "result") {
+              result = entry.text;
+              continue;
+            }
+            onLine(entry.kind, entry.text);
+          }
+        }
+        return result;
+      }
+
+      function extractMermaidBlock(markdown) {
+        const match = markdown.match(/```mermaid\n([\s\S]*?)\n```/);
+        return match ? match[1].trim() : null;
+      }
+
+      async function renderDiagram(markdown) {
+        const source = extractMermaidBlock(markdown);
+        if (!source) return;
+        try {
+          const { svg } = await mermaid.render("briefing-diagram", source);
+          diagramBox.innerHTML = svg;
+          diagramBox.hidden = false;
+        } catch {
+          // A diagram the model produced doesn't parse as valid Mermaid --
+          // the rest of the Briefing (summary, risks) is still shown in
+          // #output and the downloadable file, so this fails quietly rather
+          // than blocking on a rendering nicety.
+          diagramBox.hidden = true;
+        }
+      }
+
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        resetPanels();
+        setBusy(true);
+        submitButton.textContent = "Running...";
 
         try {
-          const response = await fetch("/review", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ prUrl, dryRun }),
-          });
+          await streamRequest(
+            "/review",
+            { prUrl: prUrlInput.value, dryRun: dryRunInput.checked },
+            appendLine,
+          );
+        } catch (err) {
+          showError(err);
+        } finally {
+          setBusy(false);
+          submitButton.textContent = "Run review";
+        }
+      });
 
-          if (!response.ok || !response.body) {
-            const data = await response.json().catch(() => ({}));
-            errorBox.textContent =
-              data.error ?? `Request failed (${response.status})`;
-            errorBox.hidden = false;
-            return;
-          }
+      briefButton.addEventListener("click", async () => {
+        resetPanels();
+        setBusy(true);
+        briefButton.textContent = "Generating...";
 
-          // The response body is streamed as newline-delimited JSON, one
-          // object per log line -- read it as it arrives instead of
-          // waiting for the whole run (which can take a couple of minutes)
-          // to finish, so progress shows up live.
-          const reader = response.body.getReader();
-          const decoder = new TextDecoder();
-          let buffer = "";
-
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            buffer += decoder.decode(value, { stream: true });
-            const lines = buffer.split("\n");
-            buffer = lines.pop() ?? "";
-            for (const raw of lines) {
-              if (!raw) continue;
-              const entry = JSON.parse(raw);
-              if (entry.kind === "done") continue;
-              if (entry.kind === "error") {
-                errorBox.textContent = entry.text;
-                errorBox.hidden = false;
-                continue;
-              }
-              appendLine(entry.kind, entry.text);
-            }
+        try {
+          const markdown = await streamRequest(
+            "/brief",
+            { prUrl: prUrlInput.value },
+            appendLine,
+          );
+          if (markdown) {
+            currentBriefing = markdown;
+            briefingActions.hidden = false;
+            await renderDiagram(markdown);
           }
         } catch (err) {
-          errorBox.textContent =
-            err instanceof Error ? err.message : String(err);
-          errorBox.hidden = false;
+          showError(err);
         } finally {
-          submitButton.disabled = false;
-          submitButton.textContent = "Run review";
+          setBusy(false);
+          briefButton.textContent = "Generate PR Briefing";
+        }
+      });
+
+      downloadButton.addEventListener("click", () => {
+        if (!currentBriefing) return;
+        const blob = new Blob([currentBriefing], { type: "text/markdown" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "pr-briefing.md";
+        a.click();
+        URL.revokeObjectURL(url);
+      });
+
+      postButton.addEventListener("click", async () => {
+        if (!currentBriefing) return;
+        postButton.disabled = true;
+        postStatus.textContent = "Posting...";
+
+        try {
+          const response = await fetch("/brief/post", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              prUrl: prUrlInput.value,
+              markdown: currentBriefing,
+            }),
+          });
+          const data = await response.json();
+          if (!response.ok) {
+            throw new Error(
+              data.error ?? `Request failed (${response.status})`,
+            );
+          }
+          postStatus.textContent = "";
+          const link = document.createElement("a");
+          link.href = data.url;
+          link.target = "_blank";
+          link.rel = "noopener";
+          link.textContent = data.url;
+          postStatus.append("Posted: ", link);
+        } catch (err) {
+          postStatus.textContent =
+            err instanceof Error ? err.message : String(err);
+        } finally {
+          postButton.disabled = false;
         }
       });
     </script>

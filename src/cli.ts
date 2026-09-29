@@ -1,8 +1,11 @@
 import "dotenv/config";
+import { writeFile } from "node:fs/promises";
 import { parseArgs } from "./cliArgs.js";
 import { loadSecrets } from "./secrets.js";
 import { runReview } from "./reviewRun.js";
 import { runBrief } from "./briefRun.js";
+import { createOctokit } from "./github/client.js";
+import { postBriefingComment } from "./briefing/postBriefingComment.js";
 import { colorizeLine } from "./cliLog.js";
 import { paint } from "./ansi.js";
 
@@ -34,6 +37,25 @@ async function main(): Promise<void> {
     log,
   });
   console.log(`\n${markdown}`);
+
+  const fileName = `pr-briefing-${args.owner}-${args.repo}-${args.prNumber}.md`;
+  await writeFile(fileName, markdown, "utf-8");
+  log(`\nWrote ${fileName}`);
+
+  if (args.post) {
+    // Posting is always a separate, explicit step from generating -- here,
+    // that's the human having typed --post, not something the brief command
+    // does by default.
+    const octokit = createOctokit(githubToken);
+    const { url } = await postBriefingComment(
+      octokit,
+      args.owner,
+      args.repo,
+      args.prNumber,
+      markdown,
+    );
+    log(`Posted: ${url}`);
+  }
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

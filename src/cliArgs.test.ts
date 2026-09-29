@@ -35,7 +35,19 @@ describe("parseArgs", () => {
       owner: "skurusamy",
       repo: "pr-review-agent",
       prNumber: 10,
+      post: false,
     });
+  });
+
+  it("recognizes --post on the brief command", () => {
+    const args = parseArgs([
+      "brief",
+      "skurusamy/pr-review-agent",
+      "10",
+      "--post",
+    ]);
+    expect(args.command).toBe("brief");
+    expect(args.command === "brief" && args.post).toBe(true);
   });
 
   it("rejects a brief command with a bad owner/repo", () => {
