@@ -26,6 +26,8 @@ export default tseslint.config(
         DOMException: "readonly",
         TextDecoder: "readonly",
         mermaid: "readonly",
+        navigator: "readonly",
+        requestAnimationFrame: "readonly",
       },
     },
   },
