@@ -5,8 +5,7 @@ import { appendLine } from "./logView.js";
 
 // The Fix Run results view: a grouped list of review threads on the left,
 // one thread's detail on the right, plus a Raw log tab (the existing log
-// panel). It draws whatever run record it holds, built live from streamed
-// events, so the same code can later draw a saved record.
+// panel). It draws the run record it holds, built live from streamed events.
 //
 // Everything below is built with textContent, never innerHTML: comment text,
 // reasoning and patches all come from PR content and the model.
@@ -202,14 +201,8 @@ function detailView(thread, run) {
   );
 }
 
-function savedNote(run) {
-  const when = new Date(run.startedAt).toLocaleString();
-  return `Saved run from ${when}${run.status === "running" ? " (still running)" : ""}.`;
-}
-
 function banner(run) {
   const parts = [];
-  if (run.saved) parts.push(savedNote(run));
   if (run.status === "failed") {
     return h(
       "div",
@@ -332,7 +325,7 @@ function applyBar(run) {
 
 async function refetchRecord() {
   const response = await fetch(`/runs/${record.id}`);
-  if (response.ok) record = { ...(await response.json()), saved: record.saved };
+  if (response.ok) record = await response.json();
 }
 
 async function startApply(run) {
@@ -357,7 +350,6 @@ async function startApply(run) {
   } catch {
     // Keep what's on screen; the message above already says what happened.
   }
-  document.dispatchEvent(new Event("history-stale"));
   render();
 }
 
@@ -380,11 +372,8 @@ function render() {
       ),
     );
   } else {
-    // A live run follows its newest thread; a saved one has nothing new
-    // coming, so it opens on the first thread the list shows.
-    const fallback = run.saved
-      ? groupThreads(run)[0].threads[0]
-      : run.threads[run.threads.length - 1];
+    // A live run follows its newest thread.
+    const fallback = run.threads[run.threads.length - 1];
     const current =
       run.threads.find((t) => t.threadId === selectedId) ?? fallback;
     const list = h("nav", { class: "rv-list" });
@@ -454,17 +443,6 @@ export function finishRun(status, error) {
       .then(render)
       .catch(() => {});
   }
-}
-
-/** Shows a saved RunRecord, read-only, in the same view a live run uses. */
-export function showRecord(saved) {
-  record = { ...saved, saved: true };
-  applyUi = { phase: "idle", message: "" };
-  selectedId = null;
-  reasoningOpen.clear();
-  patchExpanded.clear();
-  showTabs("Summary", summary);
-  render();
 }
 
 export function resetResults() {

@@ -35,12 +35,12 @@ export function clearBriefing() {
   currentBriefing = null;
 }
 
-export async function showBriefing(markdown, savedAt) {
+export async function showBriefing(markdown) {
   currentBriefing = markdown;
   // Before rendering, not after: Mermaid measures text in the DOM, so a
   // diagram drawn into a hidden panel comes out empty.
   selectTab("summary");
-  await renderBriefing(markdown, savedAt);
+  await renderBriefing(markdown);
 }
 
 // ---- Parsing: the Markdown stays canonical (Download and Post use it
@@ -290,7 +290,7 @@ function actionsView(prUrl) {
   return box;
 }
 
-async function renderBriefing(markdown, savedAt) {
+async function renderBriefing(markdown) {
   const { title, prUrl, sections } = parseBriefing(markdown);
   const parts = prParts(prUrl);
   const heading = h("h2", "");
@@ -317,15 +317,6 @@ async function renderBriefing(markdown, savedAt) {
   );
 
   briefingBox.textContent = "";
-  if (savedAt) {
-    briefingBox.append(
-      h(
-        "div",
-        "bf-saved",
-        `Saved briefing from ${new Date(savedAt).toLocaleString()}.`,
-      ),
-    );
-  }
   briefingBox.append(header);
   for (const section of sections) {
     briefingBox.append(await sectionView(section));

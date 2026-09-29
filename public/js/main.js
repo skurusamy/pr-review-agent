@@ -1,19 +1,12 @@
 import { streamRequest, isAbortError } from "./stream.js";
-import { appendLine, showError, clearLog, loadLog } from "./logView.js";
+import { appendLine, showError, clearLog } from "./logView.js";
 import {
   startRun,
   applyFixEvent,
   finishRun,
   resetResults,
   isActive,
-  showRecord,
 } from "./resultsView.js";
-import {
-  initHistory,
-  refreshHistory,
-  clearOpenRun,
-  setHistoryBusy,
-} from "./history.js";
 import { clearBriefing, showBriefing, startBriefing } from "./briefing.js";
 import {
   clearCodeReview,
@@ -47,45 +40,11 @@ function setBusy(busy) {
   briefButton.disabled = busy;
   reviewButton.disabled = busy;
   stopButton.hidden = !busy;
-  // Opening a saved run mid-stream would replace the live one on screen.
-  setHistoryBusy(busy);
-  // A finished (or failed) run is saved by now, so it joins the list.
-  if (!busy) refreshHistory();
 }
-
-// A saved run shows in the same views as a live one, read-only.
-function openSaved(record) {
-  resetPanels();
-  if (record.kind === "briefing") {
-    startBriefing();
-    loadLog(record.rawLog);
-    if (record.briefingMarkdown) {
-      showBriefing(record.briefingMarkdown, record.startedAt);
-    } else if (record.error) {
-      showError(new Error(record.error));
-    }
-  } else {
-    showRecord(record);
-    loadLog(record.rawLog);
-  }
-}
-
-initHistory({
-  onOpen: openSaved,
-  onMissing: () => {
-    resetPanels();
-    showError(
-      new Error(
-        "That run isn't in this server's history (it may have been pruned).",
-      ),
-    );
-  },
-});
 
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
   resetPanels();
-  clearOpenRun();
   setBusy(true);
   submitButton.textContent = "Addressing...";
   const controller = new AbortController();
@@ -126,7 +85,6 @@ form.addEventListener("submit", async (event) => {
 
 briefButton.addEventListener("click", async () => {
   resetPanels();
-  clearOpenRun();
   startBriefing();
   setBusy(true);
   briefButton.textContent = "Briefing...";
@@ -160,7 +118,6 @@ briefButton.addEventListener("click", async () => {
 
 reviewButton.addEventListener("click", async () => {
   resetPanels();
-  clearOpenRun();
   startCodeReview();
   setBusy(true);
   reviewButton.textContent = "Reviewing...";

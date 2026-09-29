@@ -18,7 +18,6 @@ import { classifyLogLine } from "./logFormat.js";
 import { formatError } from "./errorLog.js";
 import { FileRunStore, isRunId } from "./runRecord/runStore.js";
 import { RunRecorder } from "./runRecord/recorder.js";
-import { summarize } from "./runRecord/summary.js";
 import {
   ApplyNotAllowedError,
   applyRun,
@@ -61,19 +60,8 @@ const app = express();
 app.use(express.json());
 app.use(express.static(join(__dirname, "..", "public")));
 
-// Light summaries only (no logs, no patches), newest first -- what a history
-// list needs. The full record is GET /runs/:id.
-app.get("/runs", async (req, res) => {
-  const requested = Number(req.query.limit);
-  const limit =
-    Number.isInteger(requested) && requested > 0
-      ? Math.min(requested, 200)
-      : 50;
-  const ids = (await runStore.listIds()).slice(0, limit);
-  const records = await Promise.all(ids.map((id) => runStore.get(id)));
-  res.json(records.flatMap((record) => (record ? [summarize(record)] : [])));
-});
-
+// One run's full record. The results view refetches it after a dry run, to
+// get what only the server holds (the PR, patches, any earlier apply).
 app.get("/runs/:id", async (req, res) => {
   const record = isRunId(req.params.id)
     ? await runStore.get(req.params.id)
@@ -209,8 +197,9 @@ app.post("/fix", async (req, res) => {
     res.write(`${JSON.stringify(entry)}\n`);
   };
 
-  // The run's durable record: saved as it progresses, so history survives a
-  // crash or Stop. Its id goes to the client first thing.
+  // The run's durable record: saved as it progresses, so a dry run can still be
+  // approved (applied to the PR) after a crash or Stop. Its id goes to the
+  // client first thing.
   const recorder = new RunRecorder(runStore, {
     kind: "fix",
     pr: reference,
@@ -260,7 +249,7 @@ app.post("/fix", async (req, res) => {
 // {kind: "result"} line, for the download; the structured review rides as one
 // {kind: "data"} line, which is what the Findings panel renders from (and what
 // posting will need), rather than the UI re-parsing Markdown. Not saved as a
-// run record yet -- see the map's note on Findings joining run history.
+// run record yet -- see the map's note on Findings joining the run record.
 app.post("/review", async (req, res) => {
   const { prUrl } = req.body as { prUrl?: string };
 

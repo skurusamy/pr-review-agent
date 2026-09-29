@@ -1,6 +1,6 @@
 /* Design tokens. Every colour, space and type value used by the other
    stylesheets comes from here, so the light/dark themes and future screens
-   (results view, history) share one vocabulary. */
+   (results view, briefing) share one vocabulary. */
 :root {
   color-scheme: light dark;
 
