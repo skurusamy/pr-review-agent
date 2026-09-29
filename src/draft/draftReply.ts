@@ -15,7 +15,9 @@ export type DraftOutcome =
 
 export type CreatePendingReviewResult =
   | { created: true; reviewId: number }
-  | { created: false; reason: "pending-review-exists" };
+  | { created: false; reason: "pending-review-exists" }
+  // Only the dry-run ledger returns this: nothing was created, by design.
+  | { created: false; reason: "dry-run" };
 
 // Embeds the specific root comment's id, not a generic tag. GitHub's API
 // gives us no way to create a reply that's both pending AND nested in the
@@ -31,6 +33,11 @@ export function hasMarkerForComment(
   rootCommentId: number,
 ): boolean {
   return commentBody.includes(marker(rootCommentId));
+}
+
+/** A Draft Reply body: the text, then the hidden Agent Marker for its comment. */
+export function withMarker(text: string, rootCommentId: number): string {
+  return `${text}\n\n${marker(rootCommentId)}`;
 }
 
 /** The reply text without its hidden Agent Marker, for showing to a person. */
@@ -50,10 +57,11 @@ export function buildDraftReply(
     );
   }
 
-  const body =
+  const text =
     outcome.kind === "not-a-bug"
-      ? `${outcome.verdict.reasoning}\n\n${marker(rootComment.id)}`
-      : `I attempted a fix for this 3 times, but couldn't get \`${outcome.failedGate}\` passing. Flagging for a human to take a look.\n\n${marker(rootComment.id)}`;
+      ? outcome.verdict.reasoning
+      : `I attempted a fix for this 3 times, but couldn't get \`${outcome.failedGate}\` passing. Flagging for a human to take a look.`;
+  const body = withMarker(text, rootComment.id);
 
   return { rootCommentId: rootComment.id, path: rootComment.path, line, body };
 }
@@ -102,6 +110,7 @@ export async function hasExistingReply(
   repo: string,
   prNumber: number,
   rootCommentId: number,
+  ownLogin?: string,
 ): Promise<boolean> {
   const submitted = await octokit.paginate(
     octokit.rest.pulls.listReviewComments,
@@ -116,13 +125,13 @@ export async function hasExistingReply(
     return true;
   }
 
-  const ownLogin = await getAuthenticatedLogin(octokit);
+  const login = ownLogin ?? (await getAuthenticatedLogin(octokit));
   const pending = await findOwnPendingReview(
     octokit,
     owner,
     repo,
     prNumber,
-    ownLogin,
+    login,
   );
   if (!pending) {
     return false;
@@ -188,14 +197,15 @@ export async function createPendingReview(
   repo: string,
   prNumber: number,
   entries: DraftReplyEntry[],
+  ownLogin?: string,
 ): Promise<CreatePendingReviewResult> {
-  const ownLogin = await getAuthenticatedLogin(octokit);
+  const login = ownLogin ?? (await getAuthenticatedLogin(octokit));
   const existing = await findOwnPendingReview(
     octokit,
     owner,
     repo,
     prNumber,
-    ownLogin,
+    login,
   );
   if (existing) {
     return { created: false, reason: "pending-review-exists" };

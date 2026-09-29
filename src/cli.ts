@@ -5,9 +5,12 @@ import { loadSecrets } from "./secrets.js";
 import { runFix } from "./fixRun.js";
 import { runBrief } from "./briefRun.js";
 import { runCodeReview } from "./codeReviewRun.js";
-import { postCodeReviewAsPending } from "./codeReview/postReview.js";
-import { createOctokit } from "./github/client.js";
-import { postBriefingComment } from "./briefing/postBriefingComment.js";
+import {
+  describePostedReview,
+  markdownFileName,
+  postBriefing,
+  postReview,
+} from "./prActions.js";
 import { colorizeLine } from "./cliLog.js";
 import { paint } from "./ansi.js";
 import { formatError } from "./errorLog.js";
@@ -32,67 +35,41 @@ async function main(): Promise<void> {
     return;
   }
 
+  const pr = { owner: args.owner, repo: args.repo, prNumber: args.prNumber };
+
   if (args.command === "review") {
     const { markdown, review, headSha } = await runCodeReview({
-      owner: args.owner,
-      repo: args.repo,
-      prNumber: args.prNumber,
+      ...pr,
       githubToken,
       log,
     });
     console.log(`\n${markdown}`);
 
-    // Same as brief: the file is written for the human to keep or share;
-    // nothing is posted to GitHub by this command.
-    const fileName = `code-review-${args.owner}-${args.repo}-${args.prNumber}.md`;
+    // The file is written for the human to keep or share; nothing is posted
+    // to GitHub by this command unless --post says so.
+    const fileName = markdownFileName("code-review", pr);
     await writeFile(fileName, markdown, "utf-8");
     log(`\nWrote ${fileName}`);
 
     if (args.post) {
-      // A separate, explicit step, like brief's --post. What it creates is a
-      // PENDING review: private to you until you submit it on GitHub.
-      const result = await postCodeReviewAsPending(
-        createOctokit(githubToken),
-        args.owner,
-        args.repo,
-        args.prNumber,
-        review,
-        headSha,
-      );
       log(
-        result.created
-          ? `Created a pending review (id ${result.reviewId}) with ${result.commentCount} comment(s): ${result.url}\nSubmit it on GitHub when ready.`
-          : "Could not create a pending review: one already exists. Submit or dismiss it on GitHub first.",
+        describePostedReview(
+          await postReview(githubToken, pr, review, headSha),
+        ),
       );
     }
     return;
   }
 
-  const markdown = await runBrief({
-    owner: args.owner,
-    repo: args.repo,
-    prNumber: args.prNumber,
-    githubToken,
-    log,
-  });
+  const markdown = await runBrief({ ...pr, githubToken, log });
   console.log(`\n${markdown}`);
 
-  const fileName = `pr-briefing-${args.owner}-${args.repo}-${args.prNumber}.md`;
+  const fileName = markdownFileName("pr-briefing", pr);
   await writeFile(fileName, markdown, "utf-8");
   log(`\nWrote ${fileName}`);
 
   if (args.post) {
-    // Posting is always a separate, explicit step from generating -- here,
-    // that's the human having typed --post, not something the brief command
-    // does by default.
-    const octokit = createOctokit(githubToken);
-    const { url } = await postBriefingComment(
-      octokit,
-      args.owner,
-      args.repo,
-      args.prNumber,
-      markdown,
-    );
+    const { url } = await postBriefing(githubToken, pr, markdown);
     log(`Posted: ${url}`);
   }
 }

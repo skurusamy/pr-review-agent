@@ -14,6 +14,7 @@ import {
 } from "../validation/validationGate.js";
 import { formatToolUse, formatThinking, isNoiseTool } from "../toolLog.js";
 import { isMaxTurnsError, lockedDown } from "../agentSession.js";
+import { setAgentGitIdentity } from "../github/checkout.js";
 
 export type FixResult =
   | {
@@ -195,11 +196,8 @@ async function commitAndPush(
   dryRun: boolean,
   push: () => Promise<void>,
 ): Promise<{ commitSha: string; patch: string }> {
+  await setAgentGitIdentity(checkoutDir);
   const git = simpleGit(checkoutDir);
-  // A fresh clone has no local git identity -- set one rather than relying
-  // on whatever (if anything) is configured globally on the machine this runs on.
-  await git.addConfig("user.name", "pr-review-agent");
-  await git.addConfig("user.email", "pr-review-agent@users.noreply.github.com");
   await git.add(".");
   const message = `Fix: ${summary}
 

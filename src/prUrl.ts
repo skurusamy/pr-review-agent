@@ -4,6 +4,10 @@ export interface PrReference {
   prNumber: number;
 }
 
+export function prUrlOf(owner: string, repo: string, prNumber: number): string {
+  return `https://github.com/${owner}/${repo}/pull/${prNumber}`;
+}
+
 const PR_URL_PATTERN = /github\.com\/([^/\s]+)\/([^/\s]+)\/pull\/(\d+)/;
 
 /**

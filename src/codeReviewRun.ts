@@ -1,5 +1,6 @@
 import { createOctokit } from "./github/client.js";
-import { checkoutPullRequestHead } from "./github/checkout.js";
+import { checkoutPullRequestHead, withCheckout } from "./github/checkout.js";
+import { prUrlOf } from "./prUrl.js";
 import { fetchPrContext } from "./briefing/fetchPrContext.js";
 import {
   generateCodeReview,
@@ -50,32 +51,25 @@ export async function runCodeReview(
   const context = await fetchPrContext(octokit, owner, repo, prNumber, log);
 
   log("Checking out the PR's head branch...");
-  const checkout = await checkoutPullRequestHead(
-    octokit,
-    owner,
-    repo,
-    prNumber,
-    githubToken,
+  return withCheckout(
+    () => checkoutPullRequestHead(octokit, owner, repo, prNumber, githubToken),
+    async (checkout) => {
+      log("Reviewing the code... (waiting for the model)");
+      const review = await generateCodeReview(
+        context,
+        checkout.dir,
+        log,
+        abortController,
+      );
+
+      const prUrl = prUrlOf(owner, repo, prNumber);
+      return {
+        title: context.title,
+        prUrl,
+        headSha: context.headSha,
+        review,
+        markdown: formatCodeReviewMarkdown(context.title, prUrl, review),
+      };
+    },
   );
-
-  try {
-    log("Reviewing the code... (waiting for the model)");
-    const review = await generateCodeReview(
-      context,
-      checkout.dir,
-      log,
-      abortController,
-    );
-
-    const prUrl = `https://github.com/${owner}/${repo}/pull/${prNumber}`;
-    return {
-      title: context.title,
-      prUrl,
-      headSha: context.headSha,
-      review,
-      markdown: formatCodeReviewMarkdown(context.title, prUrl, review),
-    };
-  } finally {
-    await checkout.cleanup();
-  }
 }

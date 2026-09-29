@@ -1,6 +1,6 @@
 import { createOctokit } from "./github/client.js";
 import { fetchReviewThreads } from "./github/reviewComments.js";
-import { checkoutPullRequestHead } from "./github/checkout.js";
+import { checkoutPullRequestHead, withCheckout } from "./github/checkout.js";
 import {
   reachVerdict,
   decideAction,
@@ -9,12 +9,14 @@ import {
 import { attemptFix } from "./fix/attemptFix.js";
 import {
   buildDraftReply,
-  hasExistingReply,
-  createPendingReview,
-  postFixConfirmation,
   stripMarker,
   type DraftReplyEntry,
 } from "./draft/draftReply.js";
+import {
+  PENDING_REVIEW_EXISTS_MESSAGE,
+  dryRunReplyLedger,
+  githubReplyLedger,
+} from "./draft/replyLedger.js";
 import { classifyLogLine } from "./logFormat.js";
 import type { FixEvent } from "./runRecord/types.js";
 
@@ -73,218 +75,178 @@ export async function runFix(options: FixRunOptions): Promise<void> {
     return;
   }
 
-  log("Checking out the PR's head branch...");
-  const checkout = await checkoutPullRequestHead(
-    octokit,
-    owner,
-    repo,
-    prNumber,
-    githubToken,
-  );
-
-  onEvent({
-    type: "run-started",
-    owner,
-    repo,
-    prNumber,
-    dryRun,
-    headSha: checkout.headSha,
-  });
+  const ledger = githubReplyLedger(octokit, { owner, repo, prNumber });
+  // In a Dry Run every write is printed instead of performed; reads still go
+  // through, so already-handled comments are skipped either way.
+  const ledgerFor = (logLine: (line: string) => void) =>
+    dryRun ? dryRunReplyLedger(ledger, logLine) : ledger;
 
   const draftEntries: DraftReplyEntry[] = [];
 
-  try {
-    for (const thread of threads) {
-      const { rootComment } = thread;
-      const threadId = rootComment.id;
-      // Sends every line to the shared text log as before, and also files it
-      // under this thread, so "Show reasoning" needs no after-the-fact parsing.
-      const tlog = (line: string): void => {
-        log(line);
-        onEvent({
-          type: "thread-log",
-          threadId,
-          kind: classifyLogLine(line),
-          text: line.trim(),
-        });
-      };
+  log("Checking out the PR's head branch...");
+  await withCheckout(
+    () => checkoutPullRequestHead(octokit, owner, repo, prNumber, githubToken),
+    async (checkout) => {
       onEvent({
-        type: "thread-started",
-        threadId,
-        path: rootComment.path,
-        line: rootComment.line ?? rootComment.originalLine,
-        outdated: rootComment.outdated,
-        reviewer: rootComment.author,
-        comment: rootComment.body,
-        url: rootComment.htmlUrl,
-      });
-      log(
-        `\n--- ${rootComment.path}:${rootComment.line ?? rootComment.originalLine} (${rootComment.htmlUrl}) ---`,
-      );
-
-      const alreadyHandled = await hasExistingReply(
-        octokit,
+        type: "run-started",
         owner,
         repo,
         prNumber,
-        rootComment.id,
-      );
-      if (alreadyHandled) {
-        tlog("Already handled in a previous run, skipping.");
-        onEvent({
-          type: "thread-outcome",
-          threadId,
-          outcome: { kind: "skipped", reason: "already-handled" },
-        });
-        continue;
-      }
+        dryRun,
+        headSha: checkout.headSha,
+      });
 
-      let verdict;
-      try {
-        verdict = await reachVerdict(
-          checkout.dir,
-          thread,
-          tlog,
-          abortController,
+      for (const thread of threads) {
+        const { rootComment } = thread;
+        const threadId = rootComment.id;
+        // Sends every line to the shared text log as before, and also files it
+        // under this thread, so "Show reasoning" needs no after-the-fact parsing.
+        const tlog = (line: string): void => {
+          log(line);
+          onEvent({
+            type: "thread-log",
+            threadId,
+            kind: classifyLogLine(line),
+            text: line.trim(),
+          });
+        };
+        onEvent({
+          type: "thread-started",
+          threadId,
+          path: rootComment.path,
+          line: rootComment.line ?? rootComment.originalLine,
+          outdated: rootComment.outdated,
+          reviewer: rootComment.author,
+          comment: rootComment.body,
+          url: rootComment.htmlUrl,
+        });
+        log(
+          `\n--- ${rootComment.path}:${rootComment.line ?? rootComment.originalLine} (${rootComment.htmlUrl}) ---`,
         );
-      } catch (error) {
-        if (error instanceof VerdictIncompleteError) {
-          tlog(`Could not reach a verdict: ${error.message}. Skipping.`);
+
+        if (await ledger.hasExistingReply(threadId)) {
+          tlog("Already handled in a previous run, skipping.");
           onEvent({
             type: "thread-outcome",
             threadId,
-            outcome: { kind: "skipped", reason: "no-verdict" },
+            outcome: { kind: "skipped", reason: "already-handled" },
           });
           continue;
         }
-        throw error;
-      }
-      tlog(`Verdict: ${verdict.verdict} -- ${verdict.reasoning}`);
-      onEvent({
-        type: "thread-verdict",
-        threadId,
-        verdict: verdict.verdict,
-        reasoning: verdict.reasoning,
-      });
 
-      const action = decideAction(thread, verdict);
-
-      if (action === "fix") {
-        tlog("Attempting a fix...");
-        const fixResult = await attemptFix(
-          checkout.dir,
-          thread,
-          verdict,
-          dryRun,
-          tlog,
-          abortController,
-          checkout.push,
-        );
-        if (fixResult.outcome === "fixed") {
-          onEvent({
-            type: "thread-outcome",
-            threadId,
-            outcome: {
-              kind: "fix",
-              commitSha: fixResult.commitSha,
-              summary: fixResult.summary,
-              attempts: fixResult.attempts,
-              gateSteps: fixResult.gateSteps,
-              patch: fixResult.patch,
-            },
-          });
-          tlog(
-            dryRun
-              ? `[dry-run] Would push commit ${fixResult.commitSha}: ${fixResult.summary}`
-              : `Pushed commit ${fixResult.commitSha}: ${fixResult.summary}`,
+        let verdict;
+        try {
+          verdict = await reachVerdict(
+            checkout.dir,
+            thread,
+            tlog,
+            abortController,
           );
-          if (dryRun) {
+        } catch (error) {
+          if (error instanceof VerdictIncompleteError) {
+            tlog(`Could not reach a verdict: ${error.message}. Skipping.`);
+            onEvent({
+              type: "thread-outcome",
+              threadId,
+              outcome: { kind: "skipped", reason: "no-verdict" },
+            });
+            continue;
+          }
+          throw error;
+        }
+        tlog(`Verdict: ${verdict.verdict} -- ${verdict.reasoning}`);
+        onEvent({
+          type: "thread-verdict",
+          threadId,
+          verdict: verdict.verdict,
+          reasoning: verdict.reasoning,
+        });
+
+        const action = decideAction(thread, verdict);
+
+        if (action === "fix") {
+          tlog("Attempting a fix...");
+          const fixResult = await attemptFix(
+            checkout.dir,
+            thread,
+            verdict,
+            dryRun,
+            tlog,
+            abortController,
+            checkout.push,
+          );
+          if (fixResult.outcome === "fixed") {
+            onEvent({
+              type: "thread-outcome",
+              threadId,
+              outcome: {
+                kind: "fix",
+                commitSha: fixResult.commitSha,
+                summary: fixResult.summary,
+                attempts: fixResult.attempts,
+                gateSteps: fixResult.gateSteps,
+                patch: fixResult.patch,
+              },
+            });
             tlog(
-              "[dry-run] Would post a confirmation reply marking this comment as handled.",
+              dryRun
+                ? `[dry-run] Would push commit ${fixResult.commitSha}: ${fixResult.summary}`
+                : `Pushed commit ${fixResult.commitSha}: ${fixResult.summary}`,
             );
-          } else {
             // Without this, a rerun's hasExistingReply would find no marker
             // for this comment at all (a fix commits code, not a comment)
             // and redo the whole Verdict/Fix Attempt loop on something
             // already fixed.
-            await postFixConfirmation(
-              octokit,
-              owner,
-              repo,
-              prNumber,
-              rootComment.id,
+            await ledgerFor(tlog).postFixConfirmation(
+              threadId,
               fixResult.commitSha,
               fixResult.summary,
             );
+          } else {
+            tlog(
+              `Fix Attempt exhausted after ${fixResult.attempts} attempts (${fixResult.lastFailedGate}); falling back to a draft reply.`,
+            );
+            const entry = buildDraftReply(thread, {
+              kind: "exhausted",
+              failedGate: fixResult.lastFailedGate,
+            });
+            draftEntries.push(entry);
+            onEvent({
+              type: "thread-outcome",
+              threadId,
+              outcome: {
+                kind: "fix-failed",
+                attempts: fixResult.attempts,
+                failedGate: fixResult.lastFailedGate,
+                body: stripMarker(entry.body),
+              },
+            });
           }
         } else {
-          tlog(
-            `Fix Attempt exhausted after ${fixResult.attempts} attempts (${fixResult.lastFailedGate}); falling back to a draft reply.`,
-          );
-          const entry = buildDraftReply(thread, {
-            kind: "exhausted",
-            failedGate: fixResult.lastFailedGate,
-          });
+          tlog("Not a bug; drafting a reply.");
+          const entry = buildDraftReply(thread, { kind: "not-a-bug", verdict });
           draftEntries.push(entry);
           onEvent({
             type: "thread-outcome",
             threadId,
-            outcome: {
-              kind: "fix-failed",
-              attempts: fixResult.attempts,
-              failedGate: fixResult.lastFailedGate,
-              body: stripMarker(entry.body),
-            },
+            outcome: { kind: "draft", body: stripMarker(entry.body) },
           });
         }
-      } else {
-        tlog("Not a bug; drafting a reply.");
-        const entry = buildDraftReply(thread, { kind: "not-a-bug", verdict });
-        draftEntries.push(entry);
-        onEvent({
-          type: "thread-outcome",
-          threadId,
-          outcome: { kind: "draft", body: stripMarker(entry.body) },
-        });
       }
-    }
-  } finally {
-    await checkout.cleanup();
-  }
+    },
+  );
 
   if (draftEntries.length === 0) {
     log("\nNo draft replies to create.");
     return;
   }
 
-  if (dryRun) {
-    log(
-      `\n[dry-run] Would create a pending review with ${draftEntries.length} comment(s):`,
-    );
-    // Just the locations -- the reasoning for each was already printed once,
-    // at its own "Verdict: ..." line above. Repeating the full text here
-    // duplicated it exactly, since a one-paragraph reasoning has no internal
-    // newline for entry.body.split("\n")[0] to actually truncate at.
-    for (const entry of draftEntries) {
-      log(`  - ${entry.path}:${entry.line}`);
-    }
-    return;
-  }
-
-  const result = await createPendingReview(
-    octokit,
-    owner,
-    repo,
-    prNumber,
-    draftEntries,
-  );
+  const result = await ledgerFor(log).createPendingReview(draftEntries);
   if (result.created) {
     log(
       `\nCreated a pending review (id ${result.reviewId}) with ${draftEntries.length} comment(s). Submit it on GitHub when ready.`,
     );
-  } else {
-    log(
-      "\nCould not create a pending review: one already exists. Submit or dismiss it on GitHub first.",
-    );
+  } else if (result.reason === "pending-review-exists") {
+    log(`\n${PENDING_REVIEW_EXISTS_MESSAGE}`);
   }
 }

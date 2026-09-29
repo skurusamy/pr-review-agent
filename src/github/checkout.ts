@@ -85,6 +85,34 @@ export async function bindPushCredentials(
   };
 }
 
+/**
+ * Runs `fn` against a checkout and always cleans it up afterwards, so a caller
+ * can't forget the try/finally. `acquire` is normally a closure over
+ * checkoutPullRequestHead; tests pass a fake.
+ */
+export async function withCheckout<T>(
+  acquire: () => Promise<Checkout>,
+  fn: (checkout: Checkout) => Promise<T>,
+): Promise<T> {
+  const checkout = await acquire();
+  try {
+    return await fn(checkout);
+  } finally {
+    await checkout.cleanup();
+  }
+}
+
+/**
+ * Gives a checkout the identity the agent's own commits are made under. A
+ * fresh clone has none, and relying on whatever is configured globally on the
+ * machine this runs on would make commits (and `git am`) fail or misattribute.
+ */
+export async function setAgentGitIdentity(dir: string): Promise<void> {
+  const git = simpleGit(dir);
+  await git.addConfig("user.name", "pr-review-agent");
+  await git.addConfig("user.email", "pr-review-agent@users.noreply.github.com");
+}
+
 export async function checkoutPullRequestHead(
   octokit: Octokit,
   owner: string,

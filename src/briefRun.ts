@@ -1,4 +1,5 @@
 import { createOctokit } from "./github/client.js";
+import { prUrlOf } from "./prUrl.js";
 import { fetchPrContext } from "./briefing/fetchPrContext.js";
 import { generateBriefing } from "./briefing/generateBriefing.js";
 import { formatBriefingMarkdown } from "./briefing/formatBriefing.js";
@@ -37,6 +38,9 @@ export async function runBrief(options: BriefRunOptions): Promise<string> {
   log("Generating briefing... (waiting for the model)");
   const briefing = await generateBriefing(context, log, abortController);
 
-  const prUrl = `https://github.com/${owner}/${repo}/pull/${prNumber}`;
-  return formatBriefingMarkdown(context.title, prUrl, briefing);
+  return formatBriefingMarkdown(
+    context.title,
+    prUrlOf(owner, repo, prNumber),
+    briefing,
+  );
 }
