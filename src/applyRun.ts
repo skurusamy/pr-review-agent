@@ -281,7 +281,7 @@ async function pushFixes(
         const reason =
           error instanceof Error ? error.message.split("\n")[0] : "";
         throw new Error(
-          `The saved patch for ${where(thread)} no longer applies (${reason}). The PR has changed since the dry run; re-run the review.`,
+          `The saved patch for ${where(thread)} no longer applies (${reason}). The PR has changed since the dry run; re-run Fix comments.`,
           { cause: error },
         );
       }
