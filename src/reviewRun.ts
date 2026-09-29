@@ -27,6 +27,13 @@ export interface ReviewRunOptions {
    * cycle has no stdout of its own to write to.
    */
   log?: (line: string) => void;
+  /**
+   * Lets a caller (the server, on a client disconnect/Stop click) cancel a
+   * run in progress -- forwarded to the Claude Agent SDK's query() calls,
+   * which tear down their subprocess on abort rather than running to
+   * completion regardless.
+   */
+  abortController?: AbortController;
 }
 
 /**
@@ -44,6 +51,7 @@ export async function runReview(options: ReviewRunOptions): Promise<void> {
     dryRun,
     githubToken,
     log = console.log,
+    abortController,
   } = options;
   const octokit = createOctokit(githubToken);
 
@@ -88,7 +96,12 @@ export async function runReview(options: ReviewRunOptions): Promise<void> {
 
       let verdict;
       try {
-        verdict = await reachVerdict(checkout.dir, thread, log);
+        verdict = await reachVerdict(
+          checkout.dir,
+          thread,
+          log,
+          abortController,
+        );
       } catch (error) {
         if (error instanceof VerdictIncompleteError) {
           log(`Could not reach a verdict: ${error.message}. Skipping.`);
@@ -108,6 +121,7 @@ export async function runReview(options: ReviewRunOptions): Promise<void> {
           verdict,
           dryRun,
           log,
+          abortController,
         );
         if (fixResult.outcome === "fixed") {
           log(

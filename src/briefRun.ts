@@ -10,6 +10,8 @@ export interface BriefRunOptions {
   githubToken: string;
   /** Progress lines, same convention as ReviewRunOptions.log. */
   log?: (line: string) => void;
+  /** Same convention as ReviewRunOptions.abortController. */
+  abortController?: AbortController;
 }
 
 /**
@@ -19,14 +21,21 @@ export interface BriefRunOptions {
  * GitHub-comment paths all need the value itself, not just console output.
  */
 export async function runBrief(options: BriefRunOptions): Promise<string> {
-  const { owner, repo, prNumber, githubToken, log = console.log } = options;
+  const {
+    owner,
+    repo,
+    prNumber,
+    githubToken,
+    log = console.log,
+    abortController,
+  } = options;
   const octokit = createOctokit(githubToken);
 
   log(`Fetching PR context for ${owner}/${repo}#${prNumber}...`);
-  const context = await fetchPrContext(octokit, owner, repo, prNumber);
+  const context = await fetchPrContext(octokit, owner, repo, prNumber, log);
 
-  log("Generating briefing...");
-  const briefing = await generateBriefing(context, log);
+  log("Generating briefing... (waiting for the model)");
+  const briefing = await generateBriefing(context, log, abortController);
 
   const prUrl = `https://github.com/${owner}/${repo}/pull/${prNumber}`;
   return formatBriefingMarkdown(context.title, prUrl, briefing);

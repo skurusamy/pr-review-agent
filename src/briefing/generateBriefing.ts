@@ -101,6 +101,7 @@ double-checking. When ready, call submit_briefing exactly once.`;
 export async function generateBriefing(
   context: PrContext,
   log: (line: string) => void = console.log,
+  abortController?: AbortController,
 ): Promise<Briefing> {
   const changedFiles = parseChangedFiles(context.diff);
 
@@ -118,6 +119,7 @@ export async function generateBriefing(
       thinking: { type: "adaptive", display: "summarized" },
       allowedTools: ["mcp__briefing-tools__submit_briefing"],
       mcpServers: { "briefing-tools": briefingServer },
+      ...(abortController ? { abortController } : {}),
     },
   })) {
     if (message.type === "assistant") {

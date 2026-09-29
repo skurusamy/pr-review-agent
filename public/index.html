@@ -52,6 +52,24 @@
         background: #fff;
         border: 1px solid #999;
       }
+      button.stop {
+        background: #dc2626;
+        color: #fff;
+        border: 1px solid #b91c1c;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4em;
+      }
+      button.stop .stop-icon {
+        width: 0.7em;
+        height: 0.7em;
+        background: #fff;
+        border-radius: 2px;
+        display: inline-block;
+      }
+      #stop-button[hidden] {
+        display: none;
+      }
       #output {
         background: #111;
         color: #d1d5db;
@@ -160,6 +178,9 @@
         <button type="button" id="brief-button" class="secondary">
           Generate PR Briefing
         </button>
+        <button type="button" id="stop-button" class="stop" hidden>
+          <span class="stop-icon"></span>Stop
+        </button>
       </div>
     </form>
 
@@ -181,6 +202,7 @@
       const form = document.getElementById("review-form");
       const submitButton = document.getElementById("submit-button");
       const briefButton = document.getElementById("brief-button");
+      const stopButton = document.getElementById("stop-button");
       const output = document.getElementById("output");
       const errorBox = document.getElementById("error");
       const diagramBox = document.getElementById("diagram");
@@ -199,6 +221,12 @@
       // would be a real bug, not just a stale UI.
       let currentBriefing = null;
 
+      // The in-flight request's own controller, if any -- what the Stop
+      // button aborts. Aborting the fetch also closes the connection to the
+      // server, which (see server.ts) aborts the underlying Claude Agent SDK
+      // session too, so Stop actually halts the work instead of just hiding it.
+      let activeController = null;
+
       function appendLine(kind, text) {
         if (!text) return;
         output.hidden = false;
@@ -207,6 +235,10 @@
         line.textContent = text;
         output.appendChild(line);
         output.scrollTop = output.scrollHeight;
+      }
+
+      function isAbortError(err) {
+        return err instanceof DOMException && err.name === "AbortError";
       }
 
       function showError(err) {
@@ -228,6 +260,7 @@
       function setBusy(busy) {
         submitButton.disabled = busy;
         briefButton.disabled = busy;
+        stopButton.hidden = !busy;
       }
 
       // Shared by /review and /brief: both stream newline-delimited JSON,
@@ -235,11 +268,12 @@
       // after the whole request finishes. /brief also sends one
       // {kind: "result"} line carrying the rendered Markdown -- everything
       // else is a progress line for onLine to render.
-      async function streamRequest(url, body, onLine) {
+      async function streamRequest(url, body, onLine, signal) {
         const response = await fetch(url, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
+          signal,
         });
 
         if (!response.ok || !response.body) {
@@ -299,18 +333,33 @@
         resetPanels();
         setBusy(true);
         submitButton.textContent = "Running...";
+        const controller = new AbortController();
+        activeController = controller;
 
         try {
           await streamRequest(
             "/review",
             { prUrl: prUrlInput.value, dryRun: dryRunInput.checked },
             appendLine,
+            controller.signal,
           );
+          // Aborting mid-stream doesn't always reject the pending read (some
+          // browsers just resolve it as a clean stream end) -- checking the
+          // signal here is what catches that case instead of the request
+          // silently looking like it finished normally.
+          if (controller.signal.aborted) {
+            appendLine("warn", "Stopped.");
+          }
         } catch (err) {
-          showError(err);
+          if (isAbortError(err) || controller.signal.aborted) {
+            appendLine("warn", "Stopped.");
+          } else {
+            showError(err);
+          }
         } finally {
           setBusy(false);
           submitButton.textContent = "Run review";
+          activeController = null;
         }
       });
 
@@ -318,24 +367,38 @@
         resetPanels();
         setBusy(true);
         briefButton.textContent = "Generating...";
+        const controller = new AbortController();
+        activeController = controller;
 
         try {
           const markdown = await streamRequest(
             "/brief",
             { prUrl: prUrlInput.value },
             appendLine,
+            controller.signal,
           );
-          if (markdown) {
+          if (controller.signal.aborted) {
+            appendLine("warn", "Stopped.");
+          } else if (markdown) {
             currentBriefing = markdown;
             briefingActions.hidden = false;
             await renderDiagram(markdown);
           }
         } catch (err) {
-          showError(err);
+          if (isAbortError(err) || controller.signal.aborted) {
+            appendLine("warn", "Stopped.");
+          } else {
+            showError(err);
+          }
         } finally {
           setBusy(false);
           briefButton.textContent = "Generate PR Briefing";
+          activeController = null;
         }
+      });
+
+      stopButton.addEventListener("click", () => {
+        activeController?.abort();
       });
 
       downloadButton.addEventListener("click", () => {

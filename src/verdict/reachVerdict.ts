@@ -95,6 +95,7 @@ export async function reachVerdict(
   checkoutDir: string,
   thread: ReviewThread,
   log: (line: string) => void = console.log,
+  abortController?: AbortController,
 ): Promise<Verdict> {
   const verdictServer = createSdkMcpServer({
     name: "verdict-tools",
@@ -121,6 +122,7 @@ export async function reachVerdict(
         "mcp__verdict-tools__submit_verdict",
       ],
       mcpServers: { "verdict-tools": verdictServer },
+      ...(abortController ? { abortController } : {}),
     },
   })) {
     // An "assistant" SDKMessage wraps a real Anthropic Messages API message

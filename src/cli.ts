@@ -8,6 +8,7 @@ import { createOctokit } from "./github/client.js";
 import { postBriefingComment } from "./briefing/postBriefingComment.js";
 import { colorizeLine } from "./cliLog.js";
 import { paint } from "./ansi.js";
+import { formatError } from "./errorLog.js";
 
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
@@ -60,13 +61,7 @@ async function main(): Promise<void> {
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   main().catch((error) => {
-    console.error(
-      paint(
-        error instanceof Error ? error.message : String(error),
-        "bold",
-        "red",
-      ),
-    );
+    console.error(paint(formatError(error), "bold", "red"));
     process.exit(1);
   });
 }

@@ -88,6 +88,7 @@ async function runAttempt(
   fixServer: ReturnType<typeof createSdkMcpServer>,
   log: (line: string) => void,
   resumeSessionId?: string,
+  abortController?: AbortController,
 ): Promise<AttemptOutcome> {
   let sessionId = "";
 
@@ -114,6 +115,7 @@ async function runAttempt(
       ],
       mcpServers: { "fix-tools": fixServer },
       ...(resumeSessionId ? { resume: resumeSessionId } : {}),
+      ...(abortController ? { abortController } : {}),
     },
   })) {
     if ("session_id" in message && message.session_id) {
@@ -194,6 +196,7 @@ export async function attemptFix(
   verdict: Verdict,
   dryRun = false,
   log: (line: string) => void = console.log,
+  abortController?: AbortController,
 ): Promise<FixResult> {
   const fixServer = createSdkMcpServer({
     name: "fix-tools",
@@ -212,6 +215,7 @@ export async function attemptFix(
       fixServer,
       log,
       sessionId,
+      abortController,
     );
     sessionId = result.sessionId;
 

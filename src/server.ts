@@ -9,6 +9,7 @@ import { runBrief } from "./briefRun.js";
 import { createOctokit } from "./github/client.js";
 import { postBriefingComment } from "./briefing/postBriefingComment.js";
 import { classifyLogLine } from "./logFormat.js";
+import { formatError } from "./errorLog.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -24,6 +25,11 @@ const PORT = Number(process.env.PORT ?? 4127);
 // to "before listening" since there's no per-invocation moment to check.
 const secrets = loadSecrets();
 
+// A small counter, not a UUID -- this only needs to disambiguate overlapping
+// requests in one terminal's output (e.g. a second click before the first
+// finished), not identify anything across restarts.
+let requestCounter = 0;
+
 const app = express();
 app.use(express.json());
 app.use(express.static(join(__dirname, "..", "public")));
@@ -35,9 +41,7 @@ app.post("/review", async (req, res) => {
   try {
     reference = parsePrUrl(prUrl ?? "");
   } catch (error) {
-    res
-      .status(400)
-      .json({ error: error instanceof Error ? error.message : String(error) });
+    res.status(400).json({ error: formatError(error) });
     return;
   }
 
@@ -51,7 +55,35 @@ app.post("/review", async (req, res) => {
   res.setHeader("Content-Type", "application/x-ndjson");
   res.flushHeaders();
 
+  const requestId = ++requestCounter;
+  const label = `[review #${requestId} ${reference.owner}/${reference.repo}#${reference.prNumber}]`;
+  console.log(`${label} started`);
+
+  // Real cancellation, not just the UI giving up: the SDK's query() takes
+  // this same AbortController and tears down its subprocess when aborted,
+  // instead of letting an unwanted run keep burning turns after the person
+  // clicked Stop. This listens on the RESPONSE, not the request: an
+  // IncomingMessage's "close" fires as soon as its body has been fully read
+  // (right after express.json() consumes the POST body), long before the
+  // client actually disconnects -- listening there aborted every run almost
+  // instantly. The response's "close" fires when the underlying connection
+  // ends, and res.writableEnded is false only if that happened before we
+  // finished on our own -- i.e. a real premature disconnect (a Stop click
+  // aborts the browser's fetch, which closes the connection; a closed tab
+  // does the same).
+  const abortController = new AbortController();
+  res.on("close", () => {
+    if (!res.writableEnded) {
+      console.log(`${label} client disconnected -- aborting`);
+      abortController.abort();
+    }
+  });
+
   const send = (entry: { kind: string; text: string }): void => {
+    // The client may already be gone (that's exactly why we'd be aborting)
+    // -- writing to an ended response throws, and that throw has nothing to
+    // do with the run itself, so it shouldn't surface as this run's error.
+    if (res.writableEnded) return;
     res.write(`${JSON.stringify(entry)}\n`);
   };
 
@@ -63,13 +95,17 @@ app.post("/review", async (req, res) => {
       dryRun: dryRun ?? true,
       githubToken: secrets.githubToken,
       log: (line) => send({ kind: classifyLogLine(line), text: line.trim() }),
+      abortController,
     });
     send({ kind: "done", text: "" });
+    console.log(`${label} finished`);
   } catch (error) {
-    send({
-      kind: "error",
-      text: error instanceof Error ? error.message : String(error),
-    });
+    if (!abortController.signal.aborted) {
+      send({ kind: "error", text: formatError(error) });
+      console.log(`${label} failed: ${formatError(error)}`);
+    } else {
+      console.log(`${label} stopped`);
+    }
   } finally {
     res.end();
   }
@@ -82,9 +118,7 @@ app.post("/brief", async (req, res) => {
   try {
     reference = parsePrUrl(prUrl ?? "");
   } catch (error) {
-    res
-      .status(400)
-      .json({ error: error instanceof Error ? error.message : String(error) });
+    res.status(400).json({ error: formatError(error) });
     return;
   }
 
@@ -95,7 +129,22 @@ app.post("/brief", async (req, res) => {
   res.setHeader("Content-Type", "application/x-ndjson");
   res.flushHeaders();
 
+  const requestId = ++requestCounter;
+  const label = `[brief #${requestId} ${reference.owner}/${reference.repo}#${reference.prNumber}]`;
+  console.log(`${label} started`);
+
+  // Same real-cancellation wiring as /review -- see the comment there for
+  // why this listens on the response rather than the request.
+  const abortController = new AbortController();
+  res.on("close", () => {
+    if (!res.writableEnded) {
+      console.log(`${label} client disconnected -- aborting`);
+      abortController.abort();
+    }
+  });
+
   const send = (entry: { kind: string; text: string }): void => {
+    if (res.writableEnded) return;
     res.write(`${JSON.stringify(entry)}\n`);
   };
 
@@ -106,14 +155,18 @@ app.post("/brief", async (req, res) => {
       prNumber: reference.prNumber,
       githubToken: secrets.githubToken,
       log: (line) => send({ kind: classifyLogLine(line), text: line.trim() }),
+      abortController,
     });
     send({ kind: "result", text: markdown });
     send({ kind: "done", text: "" });
+    console.log(`${label} finished`);
   } catch (error) {
-    send({
-      kind: "error",
-      text: error instanceof Error ? error.message : String(error),
-    });
+    if (!abortController.signal.aborted) {
+      send({ kind: "error", text: formatError(error) });
+      console.log(`${label} failed: ${formatError(error)}`);
+    } else {
+      console.log(`${label} stopped`);
+    }
   } finally {
     res.end();
   }
@@ -126,9 +179,7 @@ app.post("/brief/post", async (req, res) => {
   try {
     reference = parsePrUrl(prUrl ?? "");
   } catch (error) {
-    res
-      .status(400)
-      .json({ error: error instanceof Error ? error.message : String(error) });
+    res.status(400).json({ error: formatError(error) });
     return;
   }
   if (!markdown) {
@@ -147,9 +198,7 @@ app.post("/brief/post", async (req, res) => {
     );
     res.json({ url });
   } catch (error) {
-    res
-      .status(500)
-      .json({ error: error instanceof Error ? error.message : String(error) });
+    res.status(500).json({ error: formatError(error) });
   }
 });
 

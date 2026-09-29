@@ -23,13 +23,20 @@ export async function fetchPrContext(
   owner: string,
   repo: string,
   prNumber: number,
+  log: (line: string) => void = console.log,
 ): Promise<PrContext> {
+  // Three separate octokit calls hide behind one "Fetching PR context..."
+  // line at the caller -- if one of them fails (wrong repo, no SSO
+  // authorization, a bad PR number), the ONLY way to tell which is this log:
+  // without it, every failure here looked identical from the outside.
+  log("  Fetching PR metadata...");
   const { data: pr } = await octokit.rest.pulls.get({
     owner,
     repo,
     pull_number: prNumber,
   });
 
+  log("  Fetching diff...");
   // octokit's types describe this call as returning the PR object regardless
   // of `mediaType.format` -- but with format "diff", the actual response body
   // GitHub sends back really is the raw diff text, not JSON. The cast makes
@@ -41,6 +48,7 @@ export async function fetchPrContext(
     mediaType: { format: "diff" },
   })) as unknown as { data: string };
 
+  log("  Fetching conversation...");
   const rawComments = await octokit.paginate(octokit.rest.issues.listComments, {
     owner,
     repo,
