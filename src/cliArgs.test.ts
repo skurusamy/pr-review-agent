@@ -20,11 +20,26 @@ describe("parseArgs", () => {
       "10",
       "--dry-run",
     ]);
-    expect(args.dryRun).toBe(true);
+    expect(args.command).toBe("review");
+    expect(args.command === "review" && args.dryRun).toBe(true);
   });
 
   it("rejects an unknown command", () => {
     expect(() => parseArgs(["bogus", "a/b", "1"])).toThrow(/Unknown command/);
+  });
+
+  it("parses a well-formed brief command", () => {
+    const args = parseArgs(["brief", "skurusamy/pr-review-agent", "10"]);
+    expect(args).toEqual({
+      command: "brief",
+      owner: "skurusamy",
+      repo: "pr-review-agent",
+      prNumber: 10,
+    });
+  });
+
+  it("rejects a brief command with a bad owner/repo", () => {
+    expect(() => parseArgs(["brief", "notaslash", "1"])).toThrow(/owner\/repo/);
   });
 
   it("rejects an owner/repo without a slash", () => {
