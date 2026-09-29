@@ -143,15 +143,53 @@
         font-size: 0.9rem;
         color: #444;
       }
-      #diagram {
+      #briefing {
         background: #fff;
         border: 1px solid #ddd;
         border-radius: 6px;
-        padding: 1rem;
+        padding: 1rem 1.25rem;
         margin-top: 1rem;
-        overflow-x: auto;
+        line-height: 1.55;
       }
-      #diagram svg {
+      #briefing h2 {
+        font-size: 1.1rem;
+        margin: 0 0 0.5rem;
+      }
+      #briefing h3 {
+        font-size: 1rem;
+        margin: 1.25rem 0 0.4rem;
+      }
+      #briefing p {
+        margin: 0.5rem 0;
+      }
+      #briefing ul {
+        margin: 0.4rem 0;
+        padding-left: 1.25rem;
+      }
+      #briefing pre {
+        background: #f5f5f5;
+        padding: 0.75rem;
+        border-radius: 4px;
+        overflow-x: auto;
+        font-size: 0.85rem;
+        margin: 0.5rem 0;
+      }
+      #briefing code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 0.9em;
+        background: #f5f5f5;
+        padding: 0 0.25em;
+        border-radius: 3px;
+      }
+      #briefing pre code {
+        background: none;
+        padding: 0;
+      }
+      #briefing .diagram {
+        overflow-x: auto;
+        margin: 0.5rem 0;
+      }
+      #briefing .diagram svg {
         max-width: 100%;
       }
     </style>
@@ -174,7 +212,9 @@
       </label>
 
       <div class="button-row">
-        <button type="submit" id="submit-button">Run review</button>
+        <button type="submit" id="submit-button">
+          Address review comments
+        </button>
         <button type="button" id="brief-button" class="secondary">
           Generate PR Briefing
         </button>
@@ -186,7 +226,7 @@
 
     <div id="error" class="error" hidden></div>
     <div id="output" hidden></div>
-    <div id="diagram" hidden></div>
+    <div id="briefing" hidden></div>
 
     <div id="briefing-actions" hidden>
       <button type="button" id="download-button" class="secondary">
@@ -205,7 +245,7 @@
       const stopButton = document.getElementById("stop-button");
       const output = document.getElementById("output");
       const errorBox = document.getElementById("error");
-      const diagramBox = document.getElementById("diagram");
+      const briefingBox = document.getElementById("briefing");
       const briefingActions = document.getElementById("briefing-actions");
       const downloadButton = document.getElementById("download-button");
       const postButton = document.getElementById("post-button");
@@ -250,8 +290,8 @@
         errorBox.hidden = true;
         output.textContent = "";
         output.hidden = true;
-        diagramBox.hidden = true;
-        diagramBox.innerHTML = "";
+        briefingBox.hidden = true;
+        briefingBox.textContent = "";
         briefingActions.hidden = true;
         postStatus.textContent = "";
         currentBriefing = null;
@@ -307,32 +347,123 @@
         return result;
       }
 
-      function extractMermaidBlock(markdown) {
-        const match = markdown.match(/```mermaid\n([\s\S]*?)\n```/);
-        return match ? match[1].trim() : null;
+      // Text inside a briefing comes from PR titles, descriptions and
+      // comments, so it's never trusted as HTML: everything below is built
+      // with textContent, and only the SVG mermaid itself generates is
+      // inserted as markup.
+      function appendInline(parent, text) {
+        text.split("`").forEach((part, i) => {
+          if (i % 2 === 1) {
+            const code = document.createElement("code");
+            code.textContent = part;
+            parent.appendChild(code);
+          } else {
+            parent.appendChild(document.createTextNode(part));
+          }
+        });
       }
 
-      async function renderDiagram(markdown) {
-        const source = extractMermaidBlock(markdown);
-        if (!source) return;
+      async function appendDiagram(source) {
+        const box = document.createElement("div");
+        box.className = "diagram";
         try {
           const { svg } = await mermaid.render("briefing-diagram", source);
-          diagramBox.innerHTML = svg;
-          diagramBox.hidden = false;
+          box.innerHTML = svg;
         } catch {
-          // A diagram the model produced doesn't parse as valid Mermaid --
-          // the rest of the Briefing (summary, risks) is still shown in
-          // #output and the downloadable file, so this fails quietly rather
-          // than blocking on a rendering nicety.
-          diagramBox.hidden = true;
+          // The model produced something that isn't valid Mermaid -- show
+          // its source instead of silently dropping the diagram.
+          const note = document.createElement("p");
+          note.textContent = "The diagram couldn't be rendered. Its source:";
+          const pre = document.createElement("pre");
+          pre.textContent = source;
+          box.append(note, pre);
         }
+        briefingBox.appendChild(box);
+      }
+
+      // Renders the same Markdown the CLI prints, in order: headings,
+      // paragraphs, bullets and code blocks, with the mermaid block drawn as
+      // a diagram in place. Deliberately a small subset -- this is the shape
+      // formatBriefingMarkdown produces, not a general Markdown parser.
+      async function renderBriefing(markdown) {
+        briefingBox.textContent = "";
+        briefingBox.hidden = false;
+        const lines = markdown.split("\n");
+        let paragraph = [];
+        let list = null;
+
+        const flushParagraph = () => {
+          if (paragraph.length === 0) return;
+          const p = document.createElement("p");
+          appendInline(p, paragraph.join(" "));
+          briefingBox.appendChild(p);
+          paragraph = [];
+        };
+
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i];
+
+          const fence = line.match(/^```(\w*)/);
+          if (fence) {
+            flushParagraph();
+            list = null;
+            const body = [];
+            i++;
+            while (i < lines.length && !lines[i].startsWith("```")) {
+              body.push(lines[i]);
+              i++;
+            }
+            if (fence[1] === "mermaid") {
+              await appendDiagram(body.join("\n"));
+            } else {
+              const pre = document.createElement("pre");
+              pre.textContent = body.join("\n");
+              briefingBox.appendChild(pre);
+            }
+            continue;
+          }
+
+          const heading = line.match(/^(#{1,3}) (.*)/);
+          if (heading) {
+            flushParagraph();
+            list = null;
+            // The page already has an h1, so a Markdown # becomes an h2.
+            const h = document.createElement(`h${heading[1].length + 1}`);
+            appendInline(h, heading[2]);
+            briefingBox.appendChild(h);
+            continue;
+          }
+
+          const bullet = line.match(/^- (.*)/);
+          if (bullet) {
+            flushParagraph();
+            if (!list) {
+              list = document.createElement("ul");
+              briefingBox.appendChild(list);
+            }
+            const li = document.createElement("li");
+            appendInline(li, bullet[1]);
+            list.appendChild(li);
+            continue;
+          }
+
+          if (line.trim() === "") {
+            flushParagraph();
+            list = null;
+            continue;
+          }
+
+          list = null;
+          paragraph.push(line.trim());
+        }
+        flushParagraph();
       }
 
       form.addEventListener("submit", async (event) => {
         event.preventDefault();
         resetPanels();
         setBusy(true);
-        submitButton.textContent = "Running...";
+        submitButton.textContent = "Addressing...";
         const controller = new AbortController();
         activeController = controller;
 
@@ -358,7 +489,7 @@
           }
         } finally {
           setBusy(false);
-          submitButton.textContent = "Run review";
+          submitButton.textContent = "Address review comments";
           activeController = null;
         }
       });
@@ -382,7 +513,7 @@
           } else if (markdown) {
             currentBriefing = markdown;
             briefingActions.hidden = false;
-            await renderDiagram(markdown);
+            await renderBriefing(markdown);
           }
         } catch (err) {
           if (isAbortError(err) || controller.signal.aborted) {
