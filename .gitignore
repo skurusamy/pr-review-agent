@@ -3,5 +3,14 @@ dist/
 .env
 *.log
 
+# Personal /teach workspace (not project docs) — kept local, never pushed
+/MISSION.md
+/RESOURCES.md
+/NOTES.md
+/reference/
+/lessons/
+/learning-records/
+/assets/
+
 # Saved run records (see src/runRecord)
 /data/
