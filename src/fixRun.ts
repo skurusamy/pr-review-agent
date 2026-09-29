@@ -1,5 +1,6 @@
 import { createOctokit } from "./github/client.js";
 import { fetchReviewThreads } from "./github/reviewComments.js";
+import { fetchPrConversation } from "./briefing/fetchPrContext.js";
 import { checkoutPullRequestHead, withCheckout } from "./github/checkout.js";
 import {
   reachVerdict,
@@ -90,6 +91,16 @@ export async function runFix(options: FixRunOptions): Promise<void> {
     return;
   }
 
+  // The PR's general discussion, once per run, for every Verdict. Read in
+  // plain code; a thread's own replies are already part of the thread.
+  log("Fetching the PR conversation...");
+  const conversation = await fetchPrConversation(
+    octokit,
+    owner,
+    repo,
+    prNumber,
+  );
+
   const ledger = githubReplyLedger(octokit, { owner, repo, prNumber });
   // In a Dry Run every write is printed instead of performed; reads still go
   // through, so already-handled comments are skipped either way.
@@ -173,6 +184,7 @@ export async function runFix(options: FixRunOptions): Promise<void> {
             thread,
             tlog,
             abortController,
+            conversation,
           );
         } catch (error) {
           if (error instanceof VerdictIncompleteError) {

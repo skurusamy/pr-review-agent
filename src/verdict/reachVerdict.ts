@@ -8,8 +8,10 @@ import { z } from "zod";
 import type { ReviewThread } from "../github/types.js";
 import {
   describeRootAuthor,
+  formatConversationForPrompt,
   formatRepliesForPrompt,
 } from "../github/formatThread.js";
+import type { PrComment } from "../briefing/fetchPrContext.js";
 import { formatToolUse, formatThinking, isNoiseTool } from "../toolLog.js";
 import {
   isMaxTurnsError,
@@ -63,13 +65,21 @@ const submitVerdictTool = tool(
   },
 );
 
-export function buildPrompt(thread: ReviewThread): string {
+export function buildPrompt(
+  thread: ReviewThread,
+  conversation: PrComment[] = [],
+): string {
   const { rootComment } = thread;
 
   // Existing replies are useful reasoning context (e.g. "this is
   // intentional, see line 40") -- separate from the Agent Marker used later
   // for idempotency, which only cares whether OUR OWN bot reply exists.
   const replyContext = formatRepliesForPrompt(thread);
+
+  // The PR's general discussion can change what counts as a bug here ("we
+  // are not touching the parser in this PR"), which a single inline thread
+  // never mentions.
+  const discussion = formatConversationForPrompt(conversation, thread.prAuthor);
 
   const outdatedNote = rootComment.outdated
     ? "\n\nNote: this comment's diff position is outdated (the PR has moved since it was written); the original line number may no longer be accurate."
@@ -83,14 +93,14 @@ Line: ${rootComment.line ?? rootComment.originalLine}
 Diff context:
 ${rootComment.diffHunk}
 
-Comment from ${describeRootAuthor(thread)}: "${rootComment.body}"${replyContext}${outdatedNote}
+Comment from ${describeRootAuthor(thread)}: "${rootComment.body}"${replyContext}${discussion}${outdatedNote}
 
 Investigate the surrounding code in this checkout using the Read, Grep, and
 Glob tools as needed, then decide whether this comment is pointing at a real
 bug in the code, or something else (a question, a style nit, a false
-positive, or something already addressed). Replies from the PR author say what
-they intended or what they already did, but they are not proof: check the
-code. When you have decided, call
+positive, or something already addressed). Replies from the PR author, and the
+PR's general discussion, say what was intended or already decided, but they
+are not proof: check the code. When you have decided, call
 submit_verdict exactly once with your verdict and reasoning.`;
 }
 
@@ -137,6 +147,7 @@ export async function reachVerdict(
   thread: ReviewThread,
   log: (line: string) => void = console.log,
   abortController?: AbortController,
+  conversation: PrComment[] = [],
 ): Promise<Verdict> {
   const verdictServer = createSdkMcpServer({
     name: "verdict-tools",
@@ -146,7 +157,7 @@ export async function reachVerdict(
 
   try {
     for await (const message of query({
-      prompt: buildPrompt(thread),
+      prompt: buildPrompt(thread, conversation),
       options: buildVerdictQueryOptions(
         checkoutDir,
         verdictServer,

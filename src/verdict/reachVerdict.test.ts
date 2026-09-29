@@ -67,6 +67,21 @@ describe("buildPrompt", () => {
     expect(prompt).toContain("not proof");
   });
 
+  it("includes the PR's general discussion when given, labelled, and says it is not proof", () => {
+    const prompt = buildPrompt({ ...makeThread(), prAuthor: "pat" }, [
+      { author: "pat", body: "We are not touching the parser in this PR." },
+    ]);
+    expect(prompt).toContain("Discussion on the PR as a whole");
+    expect(prompt).toContain(
+      "- pat (PR author): We are not touching the parser in this PR.",
+    );
+    expect(prompt).toContain("not proof");
+  });
+
+  it("has no discussion section when there is none", () => {
+    expect(buildPrompt(makeThread())).not.toContain("Discussion on the PR");
+  });
+
   it("notes when a comment is outdated", () => {
     const prompt = buildPrompt(makeThread({ outdated: true, line: null }));
     expect(prompt).toContain("outdated");

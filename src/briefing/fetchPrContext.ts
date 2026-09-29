@@ -1,5 +1,6 @@
 import type { Octokit } from "octokit";
 import type { LinkedIssue } from "./linkedIssues.js";
+import type { ReviewThread } from "../github/types.js";
 
 export interface PrComment {
   author: string;
@@ -23,6 +24,34 @@ export interface PrContext {
    * doesn't pay for lookups it won't use.
    */
   linkedIssues?: LinkedIssue[];
+  /**
+   * The inline review threads already on the PR, with their resolved state.
+   * Filled in by the caller that wants them (Review PR), so Brief PR doesn't
+   * pay for a lookup it won't use.
+   */
+  reviewThreads?: ReviewThread[];
+}
+
+/**
+ * The PR's top-level conversation (issue comments), oldest first. Not the
+ * inline review threads: those are a separate list (see fetchReviewThreads).
+ */
+export async function fetchPrConversation(
+  octokit: Octokit,
+  owner: string,
+  repo: string,
+  prNumber: number,
+): Promise<PrComment[]> {
+  const raw = await octokit.paginate(octokit.rest.issues.listComments, {
+    owner,
+    repo,
+    issue_number: prNumber,
+    per_page: 100,
+  });
+  return raw.map((c) => ({
+    author: c.user?.login ?? "unknown",
+    body: c.body ?? "",
+  }));
 }
 
 /**
@@ -62,20 +91,12 @@ export async function fetchPrContext(
   })) as unknown as { data: string };
 
   log("  Fetching conversation...");
-  const rawComments = await octokit.paginate(octokit.rest.issues.listComments, {
-    owner,
-    repo,
-    issue_number: prNumber,
-    per_page: 100,
-  });
+  const comments = await fetchPrConversation(octokit, owner, repo, prNumber);
 
   return {
     title: pr.title,
     description: pr.body,
-    comments: rawComments.map((c) => ({
-      author: c.user?.login ?? "unknown",
-      body: c.body ?? "",
-    })),
+    comments,
     diff,
     headSha: pr.head.sha,
   };

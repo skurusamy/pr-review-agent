@@ -4,6 +4,10 @@ import type { ReviewThread } from "./github/types.js";
 const reachVerdict = vi.fn();
 const hasExistingReply = vi.fn();
 
+const fetchPrConversation = vi.fn();
+vi.mock("./briefing/fetchPrContext.js", () => ({
+  fetchPrConversation: (...args: unknown[]) => fetchPrConversation(...args),
+}));
 vi.mock("./github/client.js", () => ({ createOctokit: () => ({}) }));
 vi.mock("./github/reviewComments.js", () => ({
   fetchReviewThreads: vi.fn(),
@@ -64,6 +68,10 @@ const base = {
 describe("runFix and resolved threads", () => {
   beforeEach(() => {
     reachVerdict.mockReset();
+    fetchPrConversation.mockReset();
+    fetchPrConversation.mockResolvedValue([
+      { author: "pat", body: "Not touching the parser here." },
+    ]);
     hasExistingReply.mockReset();
     hasExistingReply.mockResolvedValue(false);
     reachVerdict.mockResolvedValue({
@@ -101,6 +109,25 @@ describe("runFix and resolved threads", () => {
       "Found 2 comment thread(s), 1 resolved.",
     );
     expect(lines.join("\n")).toContain("Already resolved on GitHub");
+  });
+
+  it("gives every Verdict the PR's general discussion, fetched once", async () => {
+    await runFix({ ...base, includeResolved: true, log: () => {} });
+
+    expect(fetchPrConversation).toHaveBeenCalledTimes(1);
+    for (const call of reachVerdict.mock.calls) {
+      expect(call[4]).toEqual([
+        { author: "pat", body: "Not touching the parser here." },
+      ]);
+    }
+  });
+
+  it("does not fetch the discussion when there are no threads to judge", async () => {
+    vi.mocked(fetchReviewThreads).mockResolvedValue([]);
+
+    await runFix({ ...base, log: () => {} });
+
+    expect(fetchPrConversation).not.toHaveBeenCalled();
   });
 
   it("judges resolved threads too when asked to", async () => {

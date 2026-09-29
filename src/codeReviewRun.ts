@@ -2,6 +2,7 @@ import { createOctokit } from "./github/client.js";
 import { checkoutPullRequestHead, withCheckout } from "./github/checkout.js";
 import { prUrlOf } from "./prUrl.js";
 import { fetchPrContext } from "./briefing/fetchPrContext.js";
+import { fetchReviewThreads } from "./github/reviewComments.js";
 import { fetchLinkedIssuesOfPr } from "./briefing/linkedIssues.js";
 import {
   generateCodeReview,
@@ -65,6 +66,16 @@ export async function runCodeReview(
   );
 
   onStep("Checking out the branch");
+  // Points already raised inline, so the review builds on them instead of
+  // repeating them. Read here in plain code, like the linked issues.
+  log("  Fetching existing review threads...");
+  context.reviewThreads = await fetchReviewThreads(
+    octokit,
+    owner,
+    repo,
+    prNumber,
+  );
+
   log("Checking out the PR's head branch...");
   return withCheckout(
     () => checkoutPullRequestHead(octokit, owner, repo, prNumber, githubToken),

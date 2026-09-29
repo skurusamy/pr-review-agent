@@ -9,7 +9,7 @@ One invocation of the agent's comment-fixing action against a single `(owner/rep
 _Avoid_: Review Run (its old name — "review" now means a Code Review), session, job, execution
 
 **Verdict**:
-The agent's per-comment judgment of whether an inline review comment points at a real bug (`bug`) or not (`not-a-bug`).
+The agent's per-comment judgment of whether an inline review comment points at a real bug (`bug`) or not (`not-a-bug`). It is made from the whole thread (the comment and every reply, with authors labelled as PR author or reviewer) and the PR's general discussion, both as evidence about intent, never as proof: the code decides.
 _Avoid_: classification, decision, outcome
 
 **Fix Attempt**:
@@ -49,7 +49,7 @@ Replaying a Dry Run's saved results onto the PR without calling the model again:
 _Avoid_: approve, confirm, replay, re-run (a re-run calls the model again)
 
 **Code Review**:
-A one-shot review of a PR's code by the agent, for a _human_ reviewer deciding what to raise on someone else's PR. Reads the PR's diff plus a read-only local checkout (so it can follow callers and types), never edits anything, and produces **Findings** plus a short overall assessment. It never approves or requests changes — that stays the human's call. Generated privately (CLI/UI) first; posting the Findings as a pending review with inline comments is a separate, explicit action. Distinct from a PR Briefing (which explains what the PR does, not whether it is right) and from a Fix Run (the comment-fixing action, which reacts to comments others already left, and can write code).
+A one-shot review of a PR's code by the agent, for a _human_ reviewer deciding what to raise on someone else's PR. Reads the PR's diff plus a read-only local checkout (so it can follow callers and types), and the inline review threads already on the PR (so it does not repeat a point someone raised, and treats a resolved thread as settled), never edits anything, and produces **Findings** plus a short overall assessment. It never approves or requests changes — that stays the human's call. Generated privately (CLI/UI) first; posting the Findings as a pending review with inline comments is a separate, explicit action. Distinct from a PR Briefing (which explains what the PR does, not whether it is right) and from a Fix Run (the comment-fixing action, which reacts to comments others already left, and can write code).
 _Avoid_: PR review, audit, scan
 
 **Finding**:

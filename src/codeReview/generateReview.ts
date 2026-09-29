@@ -15,6 +15,7 @@ import {
   formatChangedFilesTree,
   type ChangedFile,
 } from "../briefing/changedFilesTree.js";
+import { formatExistingThreadsForPrompt } from "../github/formatThread.js";
 import { formatToolUse, formatThinking, isNoiseTool } from "../toolLog.js";
 import {
   parseDiffFiles,
@@ -175,6 +176,14 @@ export function buildReviewPrompt(
       ? `\n\nExisting conversation on this PR:\n${context.comments.map((c) => `- ${c.author}: ${c.body}`).join("\n")}`
       : "";
 
+  const existingThreads = formatExistingThreadsForPrompt(
+    context.reviewThreads ?? [],
+  );
+  const threadsNote =
+    existingThreads !== ""
+      ? "\n\nThe inline review threads above are already on the PR. Do not report a point one of them already raises: build on it or leave it. A thread marked resolved was considered settled by the people on it, so do not raise it again unless the checkout still clearly has the problem, and then say it was marked resolved. If you disagree with how a thread ended, say so in the assessment."
+      : "";
+
   const skippedNote =
     skipped.length > 0
       ? `\n\nNot shown to you (${skipped.map((s) => `${s.path}: ${s.reason}`).join("; ")}). You may still Read these files in the checkout, but do not report on lines you have not seen in a diff.`
@@ -193,7 +202,7 @@ Title: ${context.title}
 
 Description:
 ${context.description ?? "(no description provided)"}${formatLinkedIssuesForPrompt(context.linkedIssues ?? [])}
-${conversation}
+${conversation}${existingThreads}
 
 Changed files:
 ${formatChangedFilesTree(changedFiles)}${skippedNote}
@@ -207,7 +216,7 @@ Look for:
 - correctness bugs (wrong logic, unhandled cases, broken callers)
 - security problems
 - changed behavior with missing or weak tests
-- drift: the diff does something other than what the title/description claims${driftNote}
+- drift: the diff does something other than what the title/description claims${driftNote}${threadsNote}
 
 Do not report style or formatting (lint covers it), and do not pad -- a few findings you are sure of beat many you are not. Each finding must point at a line from the diff's gutter; if a concern is about the change as a whole or about code the diff did not touch, put it in the assessment instead. Budget: you have about 20 tool-using turns, and several tool calls in one turn count as one. Start submitting before you run out -- a review of what you verified beats none. When done, call submit_review exactly once.`;
 }

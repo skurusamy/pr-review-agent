@@ -84,6 +84,46 @@ describe("buildReviewPrompt", () => {
     expect(withIssue).toContain("what a linked issue asks for");
   });
 
+  it("shows the inline threads already on the PR and tells the model not to repeat them", () => {
+    const withThreads = buildReviewPrompt(
+      makeContext({
+        reviewThreads: [
+          {
+            rootComment: {
+              id: 1,
+              path: "src/page.ts",
+              line: 11,
+              originalLine: 11,
+              diffHunk: "@@",
+              body: "This drops the last page.",
+              author: "rita",
+              createdAt: "2026-01-01T00:00:00Z",
+              htmlUrl: "https://github.com/o/r/pull/1#r1",
+              outdated: false,
+            },
+            replies: [],
+            resolved: true,
+          },
+        ],
+      }),
+      [],
+      "",
+      [],
+    );
+    expect(withThreads).toContain("Inline review threads already on this PR");
+    expect(withThreads).toContain("- src/page.ts:11 [resolved]");
+    expect(withThreads).toContain("This drops the last page.");
+    expect(withThreads).toContain(
+      "Do not report a point one of them already raises",
+    );
+    expect(withThreads).toContain("marked resolved");
+  });
+
+  it("has no thread section or instruction when the PR has no inline threads", () => {
+    expect(prompt).not.toContain("Inline review threads");
+    expect(prompt).not.toContain("already raises");
+  });
+
   it("notes when there is no description", () => {
     const none = buildReviewPrompt(
       makeContext({ description: null }),
