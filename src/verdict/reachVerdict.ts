@@ -11,7 +11,11 @@ import {
   formatRepliesForPrompt,
 } from "../github/formatThread.js";
 import { formatToolUse, formatThinking, isNoiseTool } from "../toolLog.js";
-import { isMaxTurnsError, lockedDown } from "../agentSession.js";
+import {
+  isMaxTurnsError,
+  lockedDown,
+  watchApiHealth,
+} from "../agentSession.js";
 
 export interface Verdict {
   verdict: "bug" | "not-a-bug";
@@ -149,6 +153,7 @@ export async function reachVerdict(
         abortController,
       ),
     })) {
+      watchApiHealth(message, log);
       // An "assistant" SDKMessage wraps a real Anthropic Messages API message
       // under `.message` (role, content blocks, stop_reason, usage) — the outer
       // SDKMessage envelope is the harness's own bookkeeping, not part of what

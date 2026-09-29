@@ -1,3 +1,5 @@
+import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
+
 /**
  * Shared lockdown for every Claude Agent SDK session this agent starts. Each
  * session reads content other people wrote (a PR's diff, description, comments
@@ -55,4 +57,45 @@ export function isMaxTurnsError(error: unknown): boolean {
   return (
     error instanceof Error && /maximum number of turns/i.test(error.message)
   );
+}
+
+/** The API key was rejected. Retrying can't help, so the run stops at once. */
+export class ApiKeyRejectedError extends Error {
+  constructor() {
+    super(
+      "The Anthropic API key was rejected (401). Check ANTHROPIC_API_KEY in .env and restart.",
+    );
+  }
+}
+
+/**
+ * Called on every message of a session's stream, before anything else looks at
+ * it. The SDK retries failed API calls with a growing delay and says nothing
+ * else meanwhile, so without this a bad key looks like a hung app for minutes.
+ *
+ * - An `api_retry` message becomes a visible warning line, so a wait is never
+ *   silent ("API error 529, retry 3 of 10 in 8s").
+ * - Authentication failures throw ApiKeyRejectedError immediately, since
+ *   retrying a rejected key only delays the same answer.
+ */
+export function watchApiHealth(
+  message: SDKMessage,
+  log: (line: string) => void,
+): void {
+  if (message.type === "system" && message.subtype === "api_retry") {
+    if (message.error === "authentication_failed") {
+      throw new ApiKeyRejectedError();
+    }
+    const seconds = Math.round(message.retry_delay_ms / 1000);
+    log(
+      `Warning: API error${message.error_status ? ` ${message.error_status}` : ""} (${message.error}); retry ${message.attempt} of ${message.max_retries} in ${seconds}s`,
+    );
+    return;
+  }
+  if (
+    message.type === "assistant" &&
+    message.error === "authentication_failed"
+  ) {
+    throw new ApiKeyRejectedError();
+  }
 }

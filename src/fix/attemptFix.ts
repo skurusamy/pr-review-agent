@@ -17,7 +17,11 @@ import {
   type GateResult,
 } from "../validation/validationGate.js";
 import { formatToolUse, formatThinking, isNoiseTool } from "../toolLog.js";
-import { isMaxTurnsError, lockedDown } from "../agentSession.js";
+import {
+  isMaxTurnsError,
+  lockedDown,
+  watchApiHealth,
+} from "../agentSession.js";
 import { setAgentGitIdentity } from "../github/checkout.js";
 
 export type FixResult =
@@ -157,6 +161,7 @@ async function runAttempt(
         abortController,
       ),
     })) {
+      watchApiHealth(message, log);
       if ("session_id" in message && message.session_id) {
         sessionId = message.session_id;
       }

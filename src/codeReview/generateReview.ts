@@ -24,7 +24,11 @@ import {
   type AnchorIndex,
 } from "./diffLines.js";
 import { selectDiffForReview, type SkippedFile } from "./selectDiff.js";
-import { isMaxTurnsError, lockedDown } from "../agentSession.js";
+import {
+  isMaxTurnsError,
+  lockedDown,
+  watchApiHealth,
+} from "../agentSession.js";
 
 export const SEVERITIES = ["high", "medium", "low"] as const;
 export const CATEGORIES = [
@@ -259,6 +263,7 @@ async function runReviewSession(
   log: (line: string) => void,
 ): Promise<ReviewInput | undefined> {
   for await (const message of query({ prompt, options })) {
+    watchApiHealth(message, log);
     session.id ??= message.session_id;
     if (message.type !== "assistant") continue;
     for (const block of message.message.content) {

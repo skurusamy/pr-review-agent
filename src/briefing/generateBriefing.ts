@@ -17,7 +17,11 @@ import {
   formatLinkedIssuesForPrompt,
   type LinkedIssue,
 } from "./linkedIssues.js";
-import { isMaxTurnsError, lockedDown } from "../agentSession.js";
+import {
+  isMaxTurnsError,
+  lockedDown,
+  watchApiHealth,
+} from "../agentSession.js";
 
 export interface Briefing {
   summary: string;
@@ -178,6 +182,7 @@ export async function generateBriefing(
       prompt: buildBriefingPrompt(context, changedFiles),
       options: buildBriefingQueryOptions(briefingServer, abortController),
     })) {
+      watchApiHealth(message, log);
       if (message.type === "assistant") {
         for (const block of message.message.content) {
           if (block.type === "thinking") {
