@@ -7,11 +7,7 @@ import {
   resetResults,
   isActive,
 } from "./resultsView.js";
-import {
-  clearBriefing,
-  showBriefing,
-  initBriefingActions,
-} from "./briefing.js";
+import { clearBriefing, showBriefing, startBriefing } from "./briefing.js";
 
 const form = document.getElementById("review-form");
 const submitButton = document.getElementById("submit-button");
@@ -19,8 +15,6 @@ const briefButton = document.getElementById("brief-button");
 const stopButton = document.getElementById("stop-button");
 const prUrlInput = document.getElementById("prUrl");
 const dryRunInput = document.getElementById("dryRun");
-
-initBriefingActions(() => prUrlInput.value);
 
 // The in-flight request's own controller, if any -- what the Stop
 // button aborts. Aborting the fetch also closes the connection to the
@@ -83,6 +77,7 @@ form.addEventListener("submit", async (event) => {
 
 briefButton.addEventListener("click", async () => {
   resetPanels();
+  startBriefing();
   setBusy(true);
   briefButton.textContent = "Generating...";
   const controller = new AbortController();

@@ -1,5 +1,5 @@
 import { applyEvent, newRun, groupThreads } from "./runState.js";
-import { setLogManaged } from "./logView.js";
+import { showTabs, hideTabs } from "./panelTabs.js";
 
 // The Review Run results view: a grouped list of review threads on the left,
 // one thread's detail on the right, plus a Raw log tab (the existing log
@@ -11,12 +11,9 @@ import { setLogManaged } from "./logView.js";
 
 const PATCH_PREVIEW_LINES = 200;
 
-const tabs = document.getElementById("results-tabs");
 const summary = document.getElementById("results-summary");
-const output = document.getElementById("output");
 
 let record = null;
-let tab = "summary";
 // null means "follow the newest thread"; a click pins the selection.
 let selectedId = null;
 const reasoningOpen = new Set();
@@ -277,34 +274,17 @@ function scheduleRender() {
   requestAnimationFrame(render);
 }
 
-function syncTab() {
-  summary.hidden = tab !== "summary";
-  output.hidden = tab !== "log";
-  for (const button of tabs.querySelectorAll("button")) {
-    button.classList.toggle("on", button.dataset.tab === tab);
-  }
-}
-
-tabs.addEventListener("click", (event) => {
-  const button = event.target.closest("button");
-  if (!button) return;
-  tab = button.dataset.tab;
-  syncTab();
-});
-
 export function isActive() {
   return record !== null;
 }
 
 export function startRun(id) {
   record = newRun(id);
-  setLogManaged(true);
-  tab = "summary";
+
   selectedId = null;
   reasoningOpen.clear();
   patchExpanded.clear();
-  tabs.hidden = false;
-  syncTab();
+  showTabs("Summary", summary);
   render();
 }
 
@@ -322,9 +302,7 @@ export function finishRun(status, error) {
 
 export function resetResults() {
   record = null;
-  setLogManaged(false);
   selectedId = null;
-  tabs.hidden = true;
-  summary.hidden = true;
+  hideTabs();
   summary.textContent = "";
 }
