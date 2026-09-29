@@ -39,3 +39,11 @@ _Avoid_: PR Summary (confusable with GitHub's own PR description), explanation, 
 **Run Record**:
 The saved, durable account of one Review Run or one PR Briefing: which PR, whether it was a Dry Run, its status (running, completed, failed, stopped), and — for a Review Run — one entry per review thread holding its Verdict, its outcome (a fix with its patch, a Draft Reply, a failed Fix Attempt that fell back to a Draft Reply, or skipped) and that thread's own log lines, plus the full ordered log. It is written as the run progresses, so a crash or a Stop keeps everything done so far. It is what the UI's history and results view read, and what an approve-after-dry-run step would apply. Distinct from the text log a run prints: the log is a stream to watch, the Run Record is the account to come back to.
 _Avoid_: run log, history entry, result
+
+**Code Review**:
+A one-shot review of a PR's code by the agent, for a _human_ reviewer deciding what to raise on someone else's PR. Reads the PR's diff plus a read-only local checkout (so it can follow callers and types), never edits anything, and produces **Findings** plus a short overall assessment. It never approves or requests changes — that stays the human's call. Generated privately (CLI/UI) first; posting the Findings as a pending review with inline comments is a separate, explicit action. Distinct from a PR Briefing (which explains what the PR does, not whether it is right) and from a Review Run (which reacts to comments others already left, and can write code).
+_Avoid_: PR review (ambiguous with Review Run), audit, scan
+
+**Finding**:
+One issue a Code Review reports: a file, a line that is part of the diff, a severity, and an explanation. Anchored to a diff line so it can be posted as an inline comment; a concern that can't be anchored goes into the overall assessment instead. In scope: correctness bugs, security problems, missing or weak tests, and drift between the diff and the PR description. Out of scope: style nits that lint already covers.
+_Avoid_: comment (confusable with a review comment), issue (confusable with a GitHub issue), nit
