@@ -11,7 +11,8 @@ export function isAbortError(err) {
 // It also carries {kind: "run", text: <run id>} once at the start and, for
 // /fix, {kind: "event", event: <FixEvent>} lines; /review sends one
 // {kind: "data", data: <the structured review>} line. All go to the
-// optional handlers and are otherwise ignored.
+// optional handlers and are otherwise ignored. {kind: "step"} lines drive
+// the Agent activity checklist.
 export async function streamRequest(url, body, onLine, signal, handlers = {}) {
   const response = await fetch(url, {
     method: "POST",
@@ -46,6 +47,10 @@ export async function streamRequest(url, body, onLine, signal, handlers = {}) {
       }
       if (entry.kind === "event") {
         handlers.onEvent?.(entry.event);
+        continue;
+      }
+      if (entry.kind === "step") {
+        handlers.onStep?.(entry.data);
         continue;
       }
       if (entry.kind === "data") {

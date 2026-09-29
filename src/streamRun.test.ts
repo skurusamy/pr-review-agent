@@ -74,3 +74,44 @@ describe("streamRun", () => {
     expect(lines().some((l) => l.kind === "error")).toBe(false);
   });
 });
+
+describe("streamRun steps", () => {
+  it("reports each step running then done, and finishes the last one itself", async () => {
+    const { res, lines } = fakeResponse();
+    await streamRun({
+      res,
+      action: "test",
+      pr: PR,
+      run: async ({ step }) => {
+        step("First");
+        step("Second");
+      },
+    });
+    const steps = lines()
+      .filter((l) => l.kind === "step")
+      .map((l) => l.data as { id: number; label: string; status: string });
+    expect(steps.map((s) => `${s.id}:${s.label}:${s.status}`)).toEqual([
+      "1:First:running",
+      "1:First:done",
+      "2:Second:running",
+      "2:Second:done",
+    ]);
+  });
+
+  it("marks the step that was running as failed when the run throws", async () => {
+    const { res, lines } = fakeResponse();
+    await streamRun({
+      res,
+      action: "test",
+      pr: PR,
+      run: async ({ step }) => {
+        step("Only");
+        throw new Error("nope");
+      },
+    });
+    const statuses = lines()
+      .filter((l) => l.kind === "step")
+      .map((l) => (l.data as { status: string }).status);
+    expect(statuses).toEqual(["running", "failed"]);
+  });
+});

@@ -35,7 +35,21 @@ export function startNdjson(res: Response): SendEntry {
   };
 }
 
+/** One line of the run's progress checklist, sent as a {kind: "step"} entry. */
+export interface StepUpdate {
+  id: number;
+  label: string;
+  status: "running" | "done" | "failed";
+  /** Epoch milliseconds, so the UI can show how long each step took. */
+  at: number;
+}
+
 export interface StreamedRunContext {
+  /**
+   * Starts the next step of the run's checklist, finishing the one before it.
+   * The last step is finished for you when the run ends.
+   */
+  step: (label: string) => void;
   /** Progress lines: classified, saved to the Run Record (if any) and sent. */
   log: (line: string) => void;
   send: SendEntry;
@@ -104,6 +118,25 @@ export async function streamRun(options: StreamedRunOptions): Promise<void> {
     send({ kind: "run", text: recorder.id });
   }
 
+  let stepCount = 0;
+  let currentStep: { id: number; label: string } | undefined;
+  const endStep = (status: "done" | "failed"): void => {
+    if (!currentStep) return;
+    const update: StepUpdate = { ...currentStep, status, at: Date.now() };
+    send({ kind: "step", data: update });
+    currentStep = undefined;
+  };
+  const step = (label: string): void => {
+    endStep("done");
+    currentStep = { id: ++stepCount, label };
+    const update: StepUpdate = {
+      ...currentStep,
+      status: "running",
+      at: Date.now(),
+    };
+    send({ kind: "step", data: update });
+  };
+
   const log = (line: string): void => {
     const entry: LogEntry = { kind: classifyLogLine(line), text: line.trim() };
     recorder?.log(entry);
@@ -111,11 +144,13 @@ export async function streamRun(options: StreamedRunOptions): Promise<void> {
   };
 
   try {
-    await run({ log, send, recorder, abortController });
+    await run({ log, step, send, recorder, abortController });
+    endStep("done");
     await recorder?.finish("completed");
     send({ kind: "done", text: "" });
     console.log(`${label} finished`);
   } catch (error) {
+    endStep("failed");
     if (!abortController.signal.aborted) {
       await recorder?.finish("failed", formatError(error));
       send({ kind: "error", text: formatError(error) });

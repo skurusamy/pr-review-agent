@@ -18,6 +18,8 @@ export interface CodeReviewRunOptions {
   log?: (line: string) => void;
   /** Same convention as FixRunOptions.abortController. */
   abortController?: AbortController;
+  /** Starts the next step of the progress checklist (the web UI shows it). */
+  onStep?: (label: string) => void;
 }
 
 export interface CodeReviewResult {
@@ -45,9 +47,11 @@ export async function runCodeReview(
     githubToken,
     log = console.log,
     abortController,
+    onStep = () => {},
   } = options;
   const octokit = createOctokit(githubToken);
 
+  onStep("Fetching pull request");
   log(`Fetching PR context for ${owner}/${repo}#${prNumber}...`);
   const context = await fetchPrContext(octokit, owner, repo, prNumber, log);
 
@@ -60,10 +64,12 @@ export async function runCodeReview(
     log,
   );
 
+  onStep("Checking out the branch");
   log("Checking out the PR's head branch...");
   return withCheckout(
     () => checkoutPullRequestHead(octokit, owner, repo, prNumber, githubToken),
     async (checkout) => {
+      onStep("Reviewing the code");
       log("Reviewing the code... (waiting for the model)");
       const review = await generateCodeReview(
         context,

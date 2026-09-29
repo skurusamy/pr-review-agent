@@ -44,6 +44,8 @@ export interface FixRunOptions {
    * the text `log`. The text log is unchanged, so the CLI needs no handler.
    */
   onEvent?: (event: FixEvent) => void;
+  /** Starts the next step of the progress checklist (the web UI shows it). */
+  onStep?: (label: string) => void;
 }
 
 /**
@@ -63,9 +65,11 @@ export async function runFix(options: FixRunOptions): Promise<void> {
     log = console.log,
     abortController,
     onEvent = () => {},
+    onStep = () => {},
   } = options;
   const octokit = createOctokit(githubToken);
 
+  onStep("Fetching review comments");
   log(`Fetching review comments for ${owner}/${repo}#${prNumber}...`);
   const threads = await fetchReviewThreads(octokit, owner, repo, prNumber);
   log(`Found ${threads.length} comment thread(s).`);
@@ -83,6 +87,7 @@ export async function runFix(options: FixRunOptions): Promise<void> {
 
   const draftEntries: DraftReplyEntry[] = [];
 
+  onStep("Checking out the branch");
   log("Checking out the PR's head branch...");
   await withCheckout(
     () => checkoutPullRequestHead(octokit, owner, repo, prNumber, githubToken),
@@ -96,7 +101,11 @@ export async function runFix(options: FixRunOptions): Promise<void> {
         headSha: checkout.headSha,
       });
 
+      let position = 0;
       for (const thread of threads) {
+        onStep(
+          `Comment ${++position} of ${threads.length}: ${thread.rootComment.path}`,
+        );
         const { rootComment } = thread;
         const threadId = rootComment.id;
         // Sends every line to the shared text log as before, and also files it
@@ -241,6 +250,7 @@ export async function runFix(options: FixRunOptions): Promise<void> {
     return;
   }
 
+  onStep("Drafting replies");
   const result = await ledgerFor(log).createPendingReview(draftEntries);
   if (result.created) {
     log(

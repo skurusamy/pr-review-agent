@@ -11,6 +11,7 @@ import { runCodeReview } from "./codeReviewRun.js";
 import { postableReviewSchema } from "./codeReview/postReview.js";
 import { createOctokit } from "./github/client.js";
 import { postBriefing, postReview } from "./prActions.js";
+import { fetchPrSummary } from "./prSummary.js";
 import { startNdjson, streamRun } from "./streamRun.js";
 import { classifyLogLine } from "./logFormat.js";
 import { formatError } from "./errorLog.js";
@@ -142,6 +143,18 @@ app.post("/runs/:id/apply", async (req, res) => {
   }
 });
 
+// The PR card's data, for "Load PR": what the PR is, before any action runs.
+app.get("/pr", async (req, res) => {
+  const pr = parseOrReject(res, String(req.query.prUrl ?? ""));
+  if (!pr) return;
+  try {
+    res.json(await fetchPrSummary(createOctokit(secrets.githubToken), pr));
+  } catch (error) {
+    const status = (error as { status?: number }).status === 404 ? 404 : 502;
+    res.status(status).json({ error: formatError(error) });
+  }
+});
+
 app.post("/fix", async (req, res) => {
   const { prUrl, dryRun } = req.body as { prUrl?: string; dryRun?: boolean };
   const pr = parseOrReject(res, prUrl ?? "");
@@ -155,9 +168,10 @@ app.post("/fix", async (req, res) => {
     // Saved as it progresses, so a dry run can still be applied to the PR
     // after a crash or Stop.
     record: { kind: "fix", store: runStore, runsMax },
-    run: async ({ log, send, recorder, abortController }) => {
+    run: async ({ log, step, send, recorder, abortController }) => {
       await runFix({
         ...pr,
+        onStep: step,
         dryRun: dryRun ?? true,
         githubToken: secrets.githubToken,
         log,
@@ -185,9 +199,10 @@ app.post("/review", async (req, res) => {
     res,
     action: "review",
     pr,
-    run: async ({ log, send, abortController }) => {
+    run: async ({ log, step, send, abortController }) => {
       const result = await runCodeReview({
         ...pr,
+        onStep: step,
         githubToken: secrets.githubToken,
         log,
         abortController,
@@ -264,9 +279,10 @@ app.post("/brief", async (req, res) => {
     action: "brief",
     pr,
     record: { kind: "briefing", store: runStore, runsMax },
-    run: async ({ log, send, recorder, abortController }) => {
+    run: async ({ log, step, send, recorder, abortController }) => {
       const markdown = await runBrief({
         ...pr,
+        onStep: step,
         githubToken: secrets.githubToken,
         log,
         abortController,

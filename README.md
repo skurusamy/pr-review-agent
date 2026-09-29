@@ -16,59 +16,19 @@ npm run dev -- review <owner/repo> <pr-number>
 
 `brief` and `review` are read-only: they write a Markdown file (`pr-briefing-…md` / `code-review-…md`) and print it, and post nothing unless you ask.
 
-Or paste a PR link into the local web UI instead:
+Or use the local web UI instead:
 
 ```bash
 npm run serve
 ```
 
-Opens at http://localhost:4127 (override with the `PORT` env var). The same logic as the CLI, but progress streams into the browser live, line by line, and a red **Stop** button cancels a long run for real (it aborts the underlying model session, it doesn't just hide it).
+Opens at http://localhost:4127 (override with the `PORT` env var). The same logic as the CLI, but progress streams into the browser live, and a red **Stop** button cancels a long run for real (it aborts the underlying model session, it doesn't just hide it).
 
-Each action has its own view: **Brief PR** shows the briefing (summary, changed files, diagram, risks), **Review PR** shows the Findings as cards ordered by severity, and **Fix comments** shows one card per review comment with its Verdict and outcome. Every view has a **Raw log** tab with the full output.
+1. **Paste a PR link and click Load PR.** A card shows the PR before anything runs: title, description, branch, author, age, comment count, files changed and additions/deletions (from `GET /pr?prUrl=…`, one GitHub call). Editing the link clears the card.
+2. **Pick a mode**: Brief PR, Review PR or Fix comments, then click the action button. The **Dry run** toggle only appears for Fix comments, since it is the only action that writes anything by default (Brief and Review are read-only).
+3. **Watch Agent activity.** A checklist shows each step as it starts and finishes, with how long it took (fetching the PR, checking out the branch, reviewing the code, one step per comment for Fix comments). **View details** opens the full Raw log.
 
-## How each feature works
-
-You paste a PR link (or use the command line) and pick one of three things. The agent never writes to GitHub unless you ask.
-
-### Brief PR: "What does this PR do?"
-
-Use it when someone sends you a PR and you want the gist before reading the code.
-
-- It reads the PR's title, description, comments and code changes, and asks the AI to explain them. The AI only sees that text and can't open any files or links.
-- If the title or description mentions a GitHub issue in the same repo (`#123`, `owner/repo#123`, or a link to it), the agent reads that issue too and shows it to the AI as background. The briefing then says whether the change appears to deliver what the issue asks for, and the issues it used are listed in the report. It reads at most 5, and a mentioned PR is used as background only.
-- You get a plain summary, a list of changed files, a diagram of the change's shape, and a short list of things worth double-checking, including where the code doesn't match the description.
-- Optional: download it as a file, or click **Post to GitHub** to add it as a comment on the PR. Everyone on the PR can see that comment.
-
-### Review PR: "Is this code any good?"
-
-Use it when you're reviewing a teammate's PR and want a second pair of eyes.
-
-- It downloads the PR's branch and lets the AI read the code around the changes, such as what calls the changed code and the tests. The AI can only read; it can't edit anything.
-- Like Brief PR, it reads same-repo issues the title or description mentions (up to 5) and shows them to the AI as background. If the code does something different from what an issue asks for, that is reported as a "doesn't match" Finding, and anything the issue asks for that the code skips is said in the assessment.
-- You get a short assessment and a list of **Findings**. Each has a file, a line, a severity (high, medium or low), a type (bug, security, tests, or "doesn't match the description") and an explanation. It skips style nitpicks.
-- It never approves or rejects the PR. That stays your decision.
-- Optional: click **Post to GitHub**. This creates one _draft_ review with each Finding as a comment on its line. The draft is private to you until you submit it on GitHub, so you can edit or delete anything first.
-- A Finding pointing at a line that isn't part of the changes can't become a line comment. It is shown separately and put in the draft's main text instead.
-
-### Fix comments: "Deal with the review comments on my PR"
-
-Use it when your own PR has review comments and you want help going through them.
-
-- For each comment on the code, the AI reads the surrounding code and decides whether it points at a real bug.
-  - **Real bug:** the AI edits the code and your project's own checks run (type-check, lint, tests). If they pass, the fix is committed and pushed to the PR branch and a reply is posted saying it's fixed. It gets up to 3 tries.
-  - **Not a bug, or it couldn't fix it:** it writes a draft reply explaining why, for you to review.
-- All the draft replies go into one private draft review on GitHub. You read and submit it when you're ready.
-- It is safe to run twice: comments it has already handled are skipped.
-- **Dry run** (ticked by default in the UI): it does all the thinking and editing but pushes and posts nothing. It only shows what it would have done.
-- **Apply this run:** if a dry run looks good, this does the real push and posts what the dry run found, without asking the AI again. It is only available while the results are still on screen, and if the PR changed in the meantime, nothing is pushed.
-
-### For all three
-
-- You watch progress live, and the **Raw log** tab shows the full detail.
-- The red **Stop** button really cancels the run and stops the AI working, so you aren't billed for more.
-- You need an Anthropic key and a GitHub token in `.env` (see Development below).
-
-**Status:** the pieces are tested with a stand-in for the AI and against real git, and the screens were checked with sample data, but a full run of each feature against the live model has not been done yet. When you first try them, check the two parts that write to GitHub: a pushed fix and the draft review.
+Each action has its own results view: **Brief PR** shows the briefing (summary, changed files, diagram, risks), **Review PR** shows the Findings as cards ordered by severity, and **Fix comments** shows one card per review comment with its Verdict and outcome. Every view has a **Raw log** tab with the full output.
 
 ## What each action can write
 

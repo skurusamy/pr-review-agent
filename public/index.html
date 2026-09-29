@@ -3,10 +3,11 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>pr-review-agent</title>
+    <title>PR Review Agent</title>
     <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
     <link rel="stylesheet" href="css/tokens.css" />
     <link rel="stylesheet" href="css/base.css" />
+    <link rel="stylesheet" href="css/app.css" />
     <link rel="stylesheet" href="css/log.css" />
     <link rel="stylesheet" href="css/briefing.css" />
     <link rel="stylesheet" href="css/codeReview.css" />
@@ -14,36 +15,97 @@
     <script type="module" src="js/main.js"></script>
   </head>
   <body>
-    <h1>pr-review-agent</h1>
-    <form id="fix-form">
-      <label for="prUrl">Pull request link</label>
-      <input
-        type="text"
-        id="prUrl"
-        name="prUrl"
-        placeholder="https://github.com/owner/repo/pull/123"
-        required
-      />
+    <header class="app-header">
+      <div class="app-logo" aria-hidden="true">PR</div>
+      <div class="app-title">
+        <h1>PR Review Agent</h1>
+        <p>Understand, review, and resolve pull requests with AI.</p>
+      </div>
+      <span id="status" class="status" data-state="ready">
+        <span class="status-dot"></span><span id="status-text">Ready</span>
+      </span>
+    </header>
 
-      <label class="checkbox-row">
+    <form id="fix-form" class="card" autocomplete="off">
+      <h2>Pull request link</h2>
+      <p class="hint">Paste a GitHub pull request URL to get started</p>
+      <div class="row">
+        <input
+          type="text"
+          id="prUrl"
+          name="prUrl"
+          placeholder="https://github.com/owner/repo/pull/123"
+          aria-label="Pull request link"
+          required
+        />
+        <button type="submit" id="load-button" class="primary">Load PR</button>
+      </div>
+    </form>
+
+    <section id="pr-card" class="card" hidden></section>
+
+    <section class="modes-section">
+      <h2>What should the agent do?</h2>
+      <p class="hint">
+        Choose a mode based on what you need. The agent will analyze the PR and
+        provide results below.
+      </p>
+      <div class="modes" role="radiogroup" aria-label="Mode">
+        <label class="mode">
+          <input type="radio" name="mode" value="brief" />
+          <span class="mode-body">
+            <strong>Brief PR</strong>
+            <span>Understand what changed with a clear summary.</span>
+          </span>
+        </label>
+        <label class="mode">
+          <input type="radio" name="mode" value="review" />
+          <span class="mode-body">
+            <strong>Review PR</strong>
+            <span>Find potential bugs, risks and improvement suggestions.</span>
+          </span>
+        </label>
+        <label class="mode">
+          <input type="radio" name="mode" value="fix" checked />
+          <span class="mode-body">
+            <strong>Fix comments</strong>
+            <span>Inspect review comments and propose/apply valid fixes.</span>
+          </span>
+        </label>
+      </div>
+    </section>
+
+    <section class="card action-bar">
+      <label id="dryrun-row" class="switch">
         <input type="checkbox" id="dryRun" name="dryRun" checked />
-        Dry run, for Fix comments (compute everything, but don't push or write
-        to GitHub)
+        <span class="switch-track"></span>
+        <span class="switch-text">
+          <strong>Dry run</strong>
+          <span>Compute everything, but don't push or write to GitHub.</span>
+        </span>
       </label>
-
-      <div class="button-row">
-        <button type="button" id="brief-button" class="secondary">
-          Brief PR
+      <div class="action-buttons">
+        <button type="button" id="run-button" class="primary">
+          Fix comments
         </button>
-        <button type="button" id="review-button" class="secondary">
-          Review PR
-        </button>
-        <button type="submit" id="submit-button">Fix comments</button>
         <button type="button" id="stop-button" class="stop" hidden>
           <span class="stop-icon"></span>Stop
         </button>
       </div>
-    </form>
+    </section>
+
+    <section id="activity" class="card" hidden>
+      <div class="activity-head">
+        <div>
+          <h2>Agent activity</h2>
+          <p class="hint">Follow the agent's progress in real time.</p>
+        </div>
+        <button type="button" id="details-button" class="secondary">
+          View details
+        </button>
+      </div>
+      <ol id="activity-steps" class="steps"></ol>
+    </section>
 
     <div id="error" class="error" hidden></div>
     <div id="results-tabs" role="tablist" hidden>

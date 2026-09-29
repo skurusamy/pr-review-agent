@@ -51,3 +51,7 @@ _Avoid_: PR review, audit, scan
 **Finding**:
 One issue a Code Review reports: a file, a line, a severity (`high`, `medium` or `low`), a category (`correctness`, `security`, `tests` or `drift`), a title and an explanation. The line is checked against the diff in code. A Finding on a diff line is anchored, so it can be posted as an inline comment. One whose line is not part of the diff is kept as **unanchored**: shown in the report and included in the posted review's body, never dropped and never posted inline. A concern about the change as a whole belongs in the assessment. In scope: correctness bugs, security problems, missing or weak tests, and drift between the diff and what the PR description or a linked issue asks for (the same same-repo issues a PR Briefing reads, at most 5, read by the agent as background). Out of scope: style nits that lint already covers.
 _Avoid_: comment (confusable with a review comment), issue (confusable with a GitHub issue), nit
+
+**Progress Step**:
+One line of the checklist a web UI run shows while it works (for example "Checking out the branch"), reported as it starts and again as it finishes or fails, with the time it took. A Fix Run reports one per review thread. Steps are only for watching progress: they are not saved in the Run Record and the CLI does not show them (its text log is unchanged). Distinct from a Fix Attempt, which is one edit-and-validate iteration on a comment.
+_Avoid_: stage, phase, task

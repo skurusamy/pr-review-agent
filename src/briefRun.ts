@@ -14,6 +14,8 @@ export interface BriefRunOptions {
   log?: (line: string) => void;
   /** Same convention as FixRunOptions.abortController. */
   abortController?: AbortController;
+  /** Starts the next step of the progress checklist (the web UI shows it). */
+  onStep?: (label: string) => void;
 }
 
 /**
@@ -30,9 +32,11 @@ export async function runBrief(options: BriefRunOptions): Promise<string> {
     githubToken,
     log = console.log,
     abortController,
+    onStep = () => {},
   } = options;
   const octokit = createOctokit(githubToken);
 
+  onStep("Fetching pull request");
   log(`Fetching PR context for ${owner}/${repo}#${prNumber}...`);
   const context = await fetchPrContext(octokit, owner, repo, prNumber, log);
 
@@ -46,6 +50,7 @@ export async function runBrief(options: BriefRunOptions): Promise<string> {
     log,
   );
 
+  onStep("Generating briefing");
   log("Generating briefing... (waiting for the model)");
   const briefing = await generateBriefing(context, log, abortController);
 

@@ -1,0 +1,317 @@
+/* App shell: header, cards, mode picker, action bar. Everything reads from
+   tokens.css, so it follows the light/dark theme like the rest. */
+body {
+  max-width: 880px;
+}
+h2 {
+  font-size: 1rem;
+  margin: 0;
+}
+.hint {
+  margin: var(--space-1) 0 0;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+.app-logo {
+  flex: none;
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  color: #fff;
+  font-weight: 700;
+  background: linear-gradient(135deg, #6366f1, #3b82f6);
+}
+.app-title {
+  flex: 1;
+}
+.app-title h1 {
+  margin: 0;
+  font-size: 1.4rem;
+}
+.app-title p {
+  margin: 2px 0 0;
+  color: var(--text-muted);
+}
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-muted);
+}
+.status-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--success);
+}
+.status[data-state="running"] .status-dot {
+  background: var(--accent);
+}
+.status[data-state="error"] .status-dot {
+  background: var(--danger);
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+.card[hidden] {
+  display: none;
+}
+.card .row {
+  display: flex;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+.card .row input[type="text"] {
+  flex: 1;
+}
+
+button.primary {
+  color: #fff;
+  background: var(--accent);
+  border-color: var(--accent);
+  font-weight: 600;
+}
+button.primary:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
+
+/* PR card */
+.pr-head {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+.pr-repo {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+.pr-title {
+  margin: var(--space-1) 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+.pr-title .pr-num {
+  color: var(--accent);
+  margin-right: var(--space-2);
+}
+.pr-desc {
+  margin: 0 0 var(--space-3);
+  color: var(--text-muted);
+}
+.pr-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+.pr-meta code {
+  background: var(--code-bg);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+.pr-stats {
+  flex: none;
+  text-align: right;
+  font-size: 0.9rem;
+  line-height: 1.7;
+}
+.pr-state {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--success);
+  border: 1px solid var(--success);
+}
+.pr-state[data-state="closed"],
+.pr-state[data-state="merged"] {
+  color: var(--text-muted);
+  border-color: var(--border-strong);
+}
+.pr-add {
+  color: var(--success);
+}
+.pr-del {
+  color: var(--danger);
+}
+
+/* Mode picker */
+.modes-section {
+  margin: var(--space-5) 0 var(--space-4);
+}
+.modes {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+@media (max-width: 720px) {
+  .modes {
+    grid-template-columns: 1fr;
+  }
+}
+.mode {
+  position: relative;
+  margin: 0;
+  font-weight: normal;
+  cursor: pointer;
+}
+.mode input {
+  position: absolute;
+  top: var(--space-3);
+  right: var(--space-3);
+}
+.mode-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  height: 100%;
+  box-sizing: border-box;
+  padding: var(--space-4);
+  padding-right: 2.5rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.mode-body span {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+.mode:has(input:checked) .mode-body {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+.mode:has(input:focus-visible) .mode-body {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Action bar */
+.action-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+.action-buttons {
+  display: flex;
+  gap: var(--space-3);
+  margin-left: auto;
+}
+.switch {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin: 0;
+  font-weight: normal;
+  cursor: pointer;
+}
+.switch[hidden] {
+  display: none;
+}
+.switch input {
+  position: absolute;
+  opacity: 0;
+}
+.switch-track {
+  flex: none;
+  position: relative;
+  width: 44px;
+  height: 24px;
+  border-radius: 12px;
+  background: var(--border-strong);
+  transition: background 0.15s;
+}
+.switch-track::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.15s;
+}
+.switch input:checked + .switch-track {
+  background: var(--accent);
+}
+.switch input:checked + .switch-track::after {
+  transform: translateX(20px);
+}
+.switch input:focus-visible + .switch-track {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.switch-text {
+  display: flex;
+  flex-direction: column;
+}
+.switch-text span {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+/* Agent activity */
+.activity-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--space-4);
+}
+.activity-head button {
+  padding: var(--space-2) var(--space-3);
+  font-size: 0.9rem;
+}
+.steps {
+  list-style: none;
+  margin: var(--space-3) 0 0;
+  padding: 0;
+}
+.step {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 6px 0;
+}
+.step-icon {
+  width: 1.2rem;
+  text-align: center;
+  font-weight: 700;
+}
+.step[data-status="done"] .step-icon {
+  color: var(--success);
+}
+.step[data-status="running"] .step-icon {
+  color: var(--accent);
+}
+.step[data-status="failed"] .step-icon {
+  color: var(--danger);
+}
+.step-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.step-time {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
