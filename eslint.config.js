@@ -27,6 +27,8 @@ export default tseslint.config(
         TextDecoder: "readonly",
         mermaid: "readonly",
         navigator: "readonly",
+        history: "readonly",
+        location: "readonly",
         requestAnimationFrame: "readonly",
       },
     },

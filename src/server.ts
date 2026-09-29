@@ -12,6 +12,12 @@ import { classifyLogLine } from "./logFormat.js";
 import { formatError } from "./errorLog.js";
 import { FileRunStore, isRunId } from "./runRecord/runStore.js";
 import { RunRecorder } from "./runRecord/recorder.js";
+import { summarize } from "./runRecord/summary.js";
+import {
+  DEFAULT_RUNS_MAX,
+  pruneRuns,
+  sweepOrphanedRuns,
+} from "./runRecord/maintenance.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -31,6 +37,8 @@ const secrets = loadSecrets();
 // terminal's output. A run's durable identity is its RunRecorder id.
 let requestCounter = 0;
 
+const runsMax = Number(process.env.RUNS_MAX) || DEFAULT_RUNS_MAX;
+
 // One JSON file per run. Ephemeral on Cloud Run's disk until a real backend
 // replaces FileRunStore behind the RunStore interface.
 const runStore = new FileRunStore(
@@ -41,8 +49,17 @@ const app = express();
 app.use(express.json());
 app.use(express.static(join(__dirname, "..", "public")));
 
-app.get("/runs", async (_req, res) => {
-  res.json(await runStore.list());
+// Light summaries only (no logs, no patches), newest first -- what a history
+// list needs. The full record is GET /runs/:id.
+app.get("/runs", async (req, res) => {
+  const requested = Number(req.query.limit);
+  const limit =
+    Number.isInteger(requested) && requested > 0
+      ? Math.min(requested, 200)
+      : 50;
+  const ids = (await runStore.listIds()).slice(0, limit);
+  const records = await Promise.all(ids.map((id) => runStore.get(id)));
+  res.json(records.flatMap((record) => (record ? [summarize(record)] : [])));
 });
 
 app.get("/runs/:id", async (req, res) => {
@@ -150,6 +167,8 @@ app.post("/review", async (req, res) => {
     }
   } finally {
     res.end();
+    // Keep the store bounded; nothing waits on this or depends on it.
+    void pruneRuns(runStore, runsMax).catch(() => {});
   }
 });
 
@@ -226,6 +245,8 @@ app.post("/brief", async (req, res) => {
     }
   } finally {
     res.end();
+    // Keep the store bounded; nothing waits on this or depends on it.
+    void pruneRuns(runStore, runsMax).catch(() => {});
   }
 });
 
@@ -260,6 +281,10 @@ app.post("/brief/post", async (req, res) => {
 });
 
 if (import.meta.url === `file://${process.argv[1]}`) {
+  // Anything still "running" at startup belonged to a process that is gone.
+  void sweepOrphanedRuns(runStore)
+    .then(() => pruneRuns(runStore, runsMax))
+    .catch((error) => console.error("Run store maintenance failed:", error));
   app.listen(PORT, () => {
     console.log(`pr-review-agent UI listening on http://localhost:${PORT}`);
   });

@@ -23,6 +23,12 @@ export function setLogManaged(value) {
   managed = value;
 }
 
+// Fills the panel from a saved run's log (a saved run has no live stream).
+export function loadLog(entries) {
+  output.textContent = "";
+  for (const entry of entries) appendLine(entry.kind, entry.text);
+}
+
 export function clearLog() {
   errorBox.hidden = true;
   output.textContent = "";
