@@ -1,8 +1,6 @@
+import { showTabs, selectTab, hideTabs } from "./panelTabs.js";
+
 const briefingBox = document.getElementById("briefing");
-const briefingActions = document.getElementById("briefing-actions");
-const downloadButton = document.getElementById("download-button");
-const postButton = document.getElementById("post-button");
-const postStatus = document.getElementById("post-status");
 
 // Mermaid's own theme follows the page's light/dark scheme; it draws to
 // SVG with fixed colours, so it needs telling rather than inheriting CSS.
@@ -16,85 +14,139 @@ function initMermaid() {
 initMermaid();
 darkQuery.addEventListener("change", initMermaid);
 
+const FILES_OPEN_LIMIT = 10;
+
 // The one PR Briefing currently on screen -- what "Download .md" and
 // "Post to GitHub" act on. Generating a new Briefing (or running a
 // review) clears it, since posting a stale one for a different PR
 // would be a real bug, not just a stale UI.
 let currentBriefing = null;
+let diagramCounter = 0;
+
+/** Called as generation starts: the tabs appear on the log while it runs. */
+export function startBriefing() {
+  showTabs("Briefing", briefingBox, "log");
+}
 
 export function clearBriefing() {
-  briefingBox.hidden = true;
+  hideTabs();
   briefingBox.textContent = "";
-  briefingActions.hidden = true;
-  postStatus.textContent = "";
   currentBriefing = null;
 }
 
 export async function showBriefing(markdown) {
   currentBriefing = markdown;
-  briefingActions.hidden = false;
+  // Before rendering, not after: Mermaid measures text in the DOM, so a
+  // diagram drawn into a hidden panel comes out empty.
+  selectTab("summary");
   await renderBriefing(markdown);
 }
 
-// Text inside a briefing comes from PR titles, descriptions and
-// comments, so it's never trusted as HTML: everything below is built
-// with textContent, and only the SVG mermaid itself generates is
-// inserted as markup.
-function appendInline(parent, text) {
-  text.split("`").forEach((part, i) => {
-    if (i % 2 === 1) {
-      const code = document.createElement("code");
-      code.textContent = part;
-      parent.appendChild(code);
-    } else {
-      parent.appendChild(document.createTextNode(part));
+// ---- Parsing: the Markdown stays canonical (Download and Post use it
+// verbatim); the UI just reads its shape, split by "## " headings. ----
+
+function parseBriefing(markdown) {
+  const lines = markdown.split("\n");
+  let title = "PR Briefing";
+  let prUrl = null;
+  const sections = [];
+  let current = null;
+  let inFence = false;
+
+  for (const line of lines) {
+    if (line.startsWith("```")) inFence = !inFence;
+    const heading = !inFence && line.match(/^## (.*)/);
+    if (heading) {
+      current = { title: heading[1].trim(), lines: [] };
+      sections.push(current);
+      continue;
     }
+    if (current) {
+      current.lines.push(line);
+      continue;
+    }
+    const h1 = line.match(/^# (?:PR Briefing: )?(.*)/);
+    if (h1) title = h1[1];
+    else if (/^https:\/\/github\.com\/\S+\/pull\/\d+/.test(line.trim())) {
+      prUrl = line.trim();
+    }
+  }
+  return { title, prUrl, sections };
+}
+
+function prParts(prUrl) {
+  const m = prUrl?.match(/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/);
+  return m ? { owner: m[1], repo: m[2], number: m[3] } : null;
+}
+
+// ---- Rendering. Text inside a briefing comes from PR titles,
+// descriptions and comments, so it's never trusted as HTML: everything
+// below is built with textContent, and only the SVG mermaid itself
+// generates is inserted as markup. ----
+
+function h(tag, className, ...kids) {
+  const el = document.createElement(tag);
+  if (className) el.className = className;
+  for (const kid of kids.flat(Infinity)) {
+    if (kid == null || kid === false) continue;
+    el.append(kid.nodeType ? kid : document.createTextNode(kid));
+  }
+  return el;
+}
+
+function inline(text) {
+  return text.split("`").map((part, i) => {
+    if (i % 2 === 1) return h("code", "", part);
+    return part;
   });
 }
 
-async function appendDiagram(source) {
-  const box = document.createElement("div");
-  box.className = "diagram";
+async function diagramView(source) {
+  const box = h("div", "diagram");
   try {
-    const { svg } = await mermaid.render("briefing-diagram", source);
+    const { svg } = await mermaid.render(
+      `briefing-diagram-${++diagramCounter}`,
+      source,
+    );
     box.innerHTML = svg;
   } catch {
     // The model produced something that isn't valid Mermaid -- show
     // its source instead of silently dropping the diagram.
-    const note = document.createElement("p");
-    note.textContent = "The diagram couldn't be rendered. Its source:";
-    const pre = document.createElement("pre");
+    const pre = h("pre", "");
     pre.textContent = source;
-    box.append(note, pre);
+    box.append(
+      h("p", "", "The diagram couldn't be rendered. Its source:"),
+      pre,
+    );
   }
-  briefingBox.appendChild(box);
+  return box;
 }
 
-// Renders the same Markdown the CLI prints, in order: headings,
-// paragraphs, bullets and code blocks, with the mermaid block drawn as
-// a diagram in place. Deliberately a small subset -- this is the shape
-// formatBriefingMarkdown produces, not a general Markdown parser.
-async function renderBriefing(markdown) {
-  briefingBox.textContent = "";
-  briefingBox.hidden = false;
-  const lines = markdown.split("\n");
+// Paragraphs, bullets and fenced blocks (a mermaid fence is drawn as a
+// diagram). A small subset -- the shape formatBriefingMarkdown produces,
+// not a general Markdown parser.
+async function blocks(lines) {
+  const out = [];
   let paragraph = [];
   let list = null;
 
-  const flushParagraph = () => {
+  const flush = () => {
     if (paragraph.length === 0) return;
-    const p = document.createElement("p");
-    appendInline(p, paragraph.join(" "));
-    briefingBox.appendChild(p);
+    const text = paragraph.join(" ");
+    const italic = text.match(/^_(.+)_$/);
+    out.push(
+      italic
+        ? h("p", "muted", h("em", "", italic[1]))
+        : h("p", "", inline(text)),
+    );
     paragraph = [];
   };
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-
     const fence = line.match(/^```(\w*)/);
     if (fence) {
-      flushParagraph();
+      flush();
       list = null;
       const body = [];
       i++;
@@ -102,93 +154,191 @@ async function renderBriefing(markdown) {
         body.push(lines[i]);
         i++;
       }
-      if (fence[1] === "mermaid") {
-        await appendDiagram(body.join("\n"));
-      } else {
-        const pre = document.createElement("pre");
+      if (fence[1] === "mermaid") out.push(await diagramView(body.join("\n")));
+      else {
+        const pre = h("pre", "");
         pre.textContent = body.join("\n");
-        briefingBox.appendChild(pre);
+        out.push(pre);
       }
       continue;
     }
-
-    const heading = line.match(/^(#{1,3}) (.*)/);
+    const heading = line.match(/^#{3,} (.*)/);
     if (heading) {
-      flushParagraph();
+      flush();
       list = null;
-      // The page already has an h1, so a Markdown # becomes an h2.
-      const h = document.createElement(`h${heading[1].length + 1}`);
-      appendInline(h, heading[2]);
-      briefingBox.appendChild(h);
+      out.push(h("h4", "", inline(heading[1])));
       continue;
     }
-
     const bullet = line.match(/^- (.*)/);
     if (bullet) {
-      flushParagraph();
+      flush();
       if (!list) {
-        list = document.createElement("ul");
-        briefingBox.appendChild(list);
+        list = h("ul", "");
+        out.push(list);
       }
-      const li = document.createElement("li");
-      appendInline(li, bullet[1]);
-      list.appendChild(li);
+      list.append(h("li", "", inline(bullet[1])));
       continue;
     }
-
     if (line.trim() === "") {
-      flushParagraph();
+      flush();
       list = null;
       continue;
     }
-
     list = null;
     paragraph.push(line.trim());
   }
-  flushParagraph();
+  flush();
+  return out;
 }
 
-downloadButton.addEventListener("click", () => {
-  if (!currentBriefing) return;
-  const blob = new Blob([currentBriefing], { type: "text/markdown" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = "pr-briefing.md";
-  a.click();
-  URL.revokeObjectURL(url);
-});
-
-export function initBriefingActions(getPrUrl) {
-  postButton.addEventListener("click", async () => {
-    if (!currentBriefing) return;
-    postButton.disabled = true;
-    postStatus.textContent = "Posting...";
-
-    try {
-      const response = await fetch("/brief/post", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          prUrl: getPrUrl(),
-          markdown: currentBriefing,
-        }),
-      });
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.error ?? `Request failed (${response.status})`);
-      }
-      postStatus.textContent = "";
-      const link = document.createElement("a");
-      link.href = data.url;
-      link.target = "_blank";
-      link.rel = "noopener";
-      link.textContent = data.url;
-      postStatus.append("Posted: ", link);
-    } catch (err) {
-      postStatus.textContent = err instanceof Error ? err.message : String(err);
-    } finally {
-      postButton.disabled = false;
+// The changed-files tree is one fenced block of "<marker> <path> (+A -D)"
+// lines; each becomes a row with the counts coloured. Anything that doesn't
+// match that shape is shown as plain text rather than dropped.
+function filesView(lines) {
+  const body = [];
+  let inFence = false;
+  for (const line of lines) {
+    if (line.startsWith("```")) {
+      inFence = !inFence;
+      continue;
     }
+    if (inFence && line.trim()) body.push(line);
+  }
+  if (body.length === 0 || body[0].startsWith("(no files")) {
+    return h("p", "muted", "No files changed.");
+  }
+  const details = h("details", "bf-files");
+  details.open = body.length <= FILES_OPEN_LIMIT;
+  details.append(h("summary", "", `Changed files (${body.length})`));
+  const list = h("div", "bf-file-list");
+  for (const line of body) {
+    const m = line.match(/^(\S+) (.*) \(\+(\d+) -(\d+)\)$/);
+    list.append(
+      m
+        ? h(
+            "div",
+            "bf-file",
+            h("span", "bf-marker", m[1]),
+            h("code", "", m[2]),
+            h("span", "bf-add", `+${m[3]}`),
+            h("span", "bf-del", `-${m[4]}`),
+          )
+        : h("div", "bf-file", line),
+    );
+  }
+  details.append(list);
+  return details;
+}
+
+async function sectionView(section) {
+  const key = section.title.toLowerCase();
+  const isRisks = key.startsWith("risks");
+  const isFiles = key === "changed files";
+  const el = h("section", `bf-section${isRisks ? " bf-risks" : ""}`);
+  if (!isFiles) el.append(h("h3", "", section.title));
+  if (isFiles) el.append(filesView(section.lines));
+  else el.append(...(await blocks(section.lines)));
+  return el;
+}
+
+function actionsView(prUrl) {
+  const parts = prParts(prUrl);
+  const box = h("div", "bf-actions");
+  const status = h("span", "bf-status");
+
+  const download = h("button", "secondary", "Download .md");
+  download.type = "button";
+  download.addEventListener("click", () => {
+    if (!currentBriefing) return;
+    const blob = new Blob([currentBriefing], { type: "text/markdown" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = parts
+      ? `pr-briefing-${parts.owner}-${parts.repo}-${parts.number}.md`
+      : "pr-briefing.md";
+    a.click();
+    URL.revokeObjectURL(url);
   });
+
+  // Posting is a visible write to the PR, so it takes a second, explicit
+  // click. The PR comes from the Briefing itself, not the page's input,
+  // which may have been edited since it was generated.
+  const post = h("button", "secondary", "Post to GitHub");
+  post.type = "button";
+  post.disabled = !parts;
+  const idle = () => {
+    box.replaceChildren(download, post, status);
+  };
+  post.addEventListener("click", () => {
+    const confirm = h("button", "", "Confirm");
+    confirm.type = "button";
+    const cancel = h("button", "secondary", "Cancel");
+    cancel.type = "button";
+    cancel.addEventListener("click", () => {
+      status.textContent = "";
+      idle();
+    });
+    confirm.addEventListener("click", async () => {
+      confirm.disabled = cancel.disabled = true;
+      status.textContent = "Posting...";
+      try {
+        const response = await fetch("/brief/post", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ prUrl, markdown: currentBriefing }),
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error ?? `Request failed (${response.status})`);
+        }
+        const link = h("a", "", data.url);
+        link.href = data.url;
+        link.target = "_blank";
+        link.rel = "noopener";
+        status.replaceChildren("Posted: ", link);
+        idle();
+      } catch (err) {
+        status.textContent = err instanceof Error ? err.message : String(err);
+        idle();
+      }
+    });
+    status.textContent = `Post this comment to ${parts.owner}/${parts.repo}#${parts.number}?`;
+    box.replaceChildren(status, confirm, cancel);
+  });
+  idle();
+  return box;
+}
+
+async function renderBriefing(markdown) {
+  const { title, prUrl, sections } = parseBriefing(markdown);
+  const parts = prParts(prUrl);
+  const heading = h("h2", "");
+  if (prUrl) {
+    const link = h("a", "", inline(title));
+    link.href = prUrl;
+    link.target = "_blank";
+    link.rel = "noopener";
+    heading.append(link);
+  } else {
+    heading.append(...inline(title));
+  }
+  const header = h(
+    "header",
+    "bf-header",
+    h(
+      "div",
+      "bf-title",
+      heading,
+      parts &&
+        h("span", "bf-sub", `${parts.owner}/${parts.repo}#${parts.number}`),
+    ),
+    actionsView(prUrl),
+  );
+
+  briefingBox.textContent = "";
+  briefingBox.append(header);
+  for (const section of sections) {
+    briefingBox.append(await sectionView(section));
+  }
 }

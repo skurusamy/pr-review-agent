@@ -1,38 +1,77 @@
-#briefing-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  margin-top: var(--space-4);
-}
-/* An ID selector's display:flex above beats the browser's own
-   [hidden] { display: none } (an attribute selector loses that
-   specificity fight), so the panel would stay visible even while
-   `hidden` is set unless this rule wins the tie back. */
-#briefing-actions[hidden] {
-  display: none;
-}
-#post-status {
-  font-size: 0.9rem;
-  color: var(--text-muted);
-}
 #briefing {
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: var(--space-4) 1.25rem;
   margin-top: var(--space-4);
   line-height: 1.55;
 }
-#briefing h2 {
-  font-size: 1.1rem;
+#briefing[hidden] {
+  display: none;
+}
+.bf-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+.bf-title h2 {
+  font-size: 1.2rem;
+  margin: 0;
+}
+.bf-title a {
+  color: var(--text);
+  text-decoration: none;
+}
+.bf-title a:hover {
+  text-decoration: underline;
+}
+.bf-sub {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+.bf-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+.bf-actions button {
+  padding: var(--space-1) var(--space-3);
+  font-size: 0.9rem;
+}
+.bf-status {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+.bf-section {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-3);
+  background: var(--bg);
+}
+.bf-section h3 {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
   margin: 0 0 var(--space-2);
 }
-#briefing h3 {
+.bf-section h4 {
   font-size: 1rem;
-  margin: 1.25rem 0 0.4rem;
+  margin: var(--space-4) 0 0.4rem;
+}
+.bf-risks {
+  border-color: var(--warning);
+  border-left-width: 4px;
+}
+.bf-risks h3 {
+  color: var(--warning);
 }
 #briefing p {
   margin: var(--space-2) 0;
+}
+#briefing .muted {
+  color: var(--text-muted);
 }
 #briefing ul {
   margin: 0.4rem 0;
@@ -63,4 +102,39 @@
 }
 #briefing .diagram svg {
   max-width: 100%;
+}
+.bf-files summary {
+  cursor: pointer;
+  font-weight: 600;
+  margin-bottom: var(--space-2);
+}
+.bf-file-list {
+  font-size: 0.9rem;
+}
+.bf-file {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: 0.15rem 0;
+}
+#briefing .bf-file code {
+  background: none;
+  padding: 0;
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.bf-marker {
+  width: 1.2em;
+  text-align: center;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+.bf-add {
+  color: var(--success);
+  font-family: var(--font-mono);
+}
+.bf-del {
+  color: var(--danger);
+  font-family: var(--font-mono);
 }
