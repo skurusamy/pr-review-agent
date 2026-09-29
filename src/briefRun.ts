@@ -8,9 +8,9 @@ export interface BriefRunOptions {
   repo: string;
   prNumber: number;
   githubToken: string;
-  /** Progress lines, same convention as ReviewRunOptions.log. */
+  /** Progress lines, same convention as FixRunOptions.log. */
   log?: (line: string) => void;
-  /** Same convention as ReviewRunOptions.abortController. */
+  /** Same convention as FixRunOptions.abortController. */
   abortController?: AbortController;
 }
 

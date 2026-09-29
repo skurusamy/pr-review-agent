@@ -54,9 +54,9 @@ function row(summary) {
   const time = span("hx-time", timeAgo(summary.startedAt));
   time.title = new Date(summary.startedAt).toLocaleString();
   top.append(
-    span("hx-kind", summary.kind === "briefing" ? "Briefing" : "Review"),
+    span("hx-kind", summary.kind === "briefing" ? "Briefing" : "Fix"),
     span("hx-pr", prLabel(summary)),
-    summary.kind === "review" && summary.dryRun !== undefined
+    summary.kind === "fix" && summary.dryRun !== undefined
       ? span("hx-badge", summary.dryRun ? "Dry run" : "Live")
       : "",
     span(`hx-badge hx-${summary.status}`, summary.status),

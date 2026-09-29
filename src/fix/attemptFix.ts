@@ -191,7 +191,7 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>`;
 }
 
 // Discards a failed attempt's partial edits so they don't bleed into the
-// next comment's Fix Attempt within the same Review Run.
+// next comment's Fix Attempt within the same Fix Run.
 async function resetWorkingTree(checkoutDir: string): Promise<void> {
   const git = simpleGit(checkoutDir);
   await git.reset(ResetMode.HARD);

@@ -5,11 +5,11 @@ import { describe, expect, it } from "vitest";
 import { applyEvent } from "./applyEvent.js";
 import { RunRecorder } from "./recorder.js";
 import { FileRunStore, isRunId, newRunId } from "./runStore.js";
-import type { ReviewEvent, RunRecord } from "./types.js";
+import type { FixEvent, RunRecord } from "./types.js";
 
 const base: RunRecord = {
   id: "20260929-183012-a3f9",
-  kind: "review",
+  kind: "fix",
   status: "running",
   startedAt: "2026-09-29T18:30:12.000Z",
   triggeredBy: null,
@@ -18,7 +18,7 @@ const base: RunRecord = {
   rawLog: [],
 };
 
-const started: ReviewEvent = {
+const started: FixEvent = {
   type: "thread-started",
   threadId: 7,
   path: "src/a.ts",
@@ -129,7 +129,7 @@ describe("RunRecorder", () => {
     const dir = await mkdtemp(join(tmpdir(), "runs-"));
     const store = new FileRunStore(dir);
     const recorder = new RunRecorder(store, {
-      kind: "review",
+      kind: "fix",
       pr: base.pr,
     });
     await recorder.start();

@@ -69,7 +69,7 @@ export function githubApplyDeps(
 /** Throws unless this record is a completed dry run that isn't fully applied. */
 export function assertApplicable(record: RunRecord): void {
   if (
-    record.kind !== "review" ||
+    record.kind !== "fix" ||
     record.dryRun !== true ||
     record.status !== "completed"
   ) {

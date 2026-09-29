@@ -1,10 +1,10 @@
-import type { ReviewEvent, RunRecord } from "./types.js";
+import type { FixEvent, RunRecord } from "./types.js";
 
 /**
- * Folds one ReviewEvent into a record. Pure and mutation-free so the same
+ * Folds one FixEvent into a record. Pure and mutation-free so the same
  * events replay to the same record, whichever code path saved them.
  */
-export function applyEvent(record: RunRecord, event: ReviewEvent): RunRecord {
+export function applyEvent(record: RunRecord, event: FixEvent): RunRecord {
   switch (event.type) {
     case "run-started":
       return { ...record, dryRun: event.dryRun, headSha: event.headSha };

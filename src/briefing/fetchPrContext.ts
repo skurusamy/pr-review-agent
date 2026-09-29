@@ -13,7 +13,7 @@ export interface PrContext {
 }
 
 /**
- * Everything a PR Briefing needs, and nothing a Review Run's checkout would
+ * Everything a PR Briefing needs, and nothing a Fix Run's checkout would
  * otherwise provide -- no local clone here. Title/description/conversation
  * ground the model's summary in what the PR *claims* to do, so it can flag
  * where the diff drifts from that; the diff itself is what actually changed.

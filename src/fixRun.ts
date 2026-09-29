@@ -16,9 +16,9 @@ import {
   type DraftReplyEntry,
 } from "./draft/draftReply.js";
 import { classifyLogLine } from "./logFormat.js";
-import type { ReviewEvent } from "./runRecord/types.js";
+import type { FixEvent } from "./runRecord/types.js";
 
-export interface ReviewRunOptions {
+export interface FixRunOptions {
   owner: string;
   repo: string;
   prNumber: number;
@@ -41,17 +41,17 @@ export interface ReviewRunOptions {
    * Structured progress (per-thread verdicts, outcomes, log lines) alongside
    * the text `log`. The text log is unchanged, so the CLI needs no handler.
    */
-  onEvent?: (event: ReviewEvent) => void;
+  onEvent?: (event: FixEvent) => void;
 }
 
 /**
- * One Review Run: fetch a PR's inline review comments, reach a Verdict on
+ * One Fix Run: fetch a PR's inline review comments, reach a Verdict on
  * each unhandled one, apply a Fix Attempt or accumulate a Draft Reply, then
  * submit every accumulated draft as one pending review. In --dry-run mode,
  * everything runs for real (including the Fix Attempt's edit + Validation
  * Gate) except the final git push and GitHub review-creation call.
  */
-export async function runReview(options: ReviewRunOptions): Promise<void> {
+export async function runFix(options: FixRunOptions): Promise<void> {
   const {
     owner,
     repo,

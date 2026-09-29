@@ -1,6 +1,6 @@
 import { applyEvent } from "./applyEvent.js";
 import { newRunId, type RunStore } from "./runStore.js";
-import type { LogEntry, ReviewEvent, RunRecord, RunStatus } from "./types.js";
+import type { LogEntry, FixEvent, RunRecord, RunStatus } from "./types.js";
 
 /**
  * Builds one RunRecord as a run progresses and saves it incrementally, so a
@@ -44,7 +44,7 @@ export class RunRecorder {
     this.record = { ...this.record, rawLog: [...this.record.rawLog, entry] };
   }
 
-  event(event: ReviewEvent): void {
+  event(event: FixEvent): void {
     this.record = applyEvent(this.record, event);
     if (event.type !== "thread-log") void this.persist();
   }

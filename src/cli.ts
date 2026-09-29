@@ -2,7 +2,7 @@ import "dotenv/config";
 import { writeFile } from "node:fs/promises";
 import { parseArgs } from "./cliArgs.js";
 import { loadSecrets } from "./secrets.js";
-import { runReview } from "./reviewRun.js";
+import { runFix } from "./fixRun.js";
 import { runBrief } from "./briefRun.js";
 import { createOctokit } from "./github/client.js";
 import { postBriefingComment } from "./briefing/postBriefingComment.js";
@@ -18,8 +18,8 @@ async function main(): Promise<void> {
   const { githubToken } = loadSecrets();
   const log = (line: string): void => console.log(colorizeLine(line));
 
-  if (args.command === "review") {
-    await runReview({
+  if (args.command === "fix") {
+    await runFix({
       owner: args.owner,
       repo: args.repo,
       prNumber: args.prNumber,

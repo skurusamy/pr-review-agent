@@ -1,6 +1,6 @@
 import { setLogManaged } from "./logView.js";
 
-// The tab bar shared by the Review Run results and the PR Briefing: one
+// The tab bar shared by the Fix Run results and the PR Briefing: one
 // "summary" panel (whichever of those is on screen, under a label of its own)
 // beside the Raw log. While tabs are showing they own the log panel's
 // visibility, so its lines never appear on top of the summary.

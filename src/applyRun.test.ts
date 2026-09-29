@@ -107,7 +107,7 @@ function makeRecord(
   });
   return {
     id: "20260929-100000-aaaa",
-    kind: "review",
+    kind: "fix",
     status: "completed",
     startedAt: "2026-09-29T10:00:00.000Z",
     triggeredBy: null,
@@ -282,7 +282,7 @@ describe("applyRun", () => {
 describe("assertApplicable", () => {
   const base = {
     id: "20260929-100000-aaaa",
-    kind: "review",
+    kind: "fix",
     status: "completed",
     startedAt: "x",
     triggeredBy: null,

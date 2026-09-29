@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 import express from "express";
 import { loadSecrets } from "./secrets.js";
 import { parsePrUrl } from "./prUrl.js";
-import { runReview } from "./reviewRun.js";
+import { runFix } from "./fixRun.js";
 import { runBrief } from "./briefRun.js";
 import { createOctokit } from "./github/client.js";
 import { postBriefingComment } from "./briefing/postBriefingComment.js";
@@ -150,7 +150,7 @@ app.post("/runs/:id/apply", async (req, res) => {
   }
 });
 
-app.post("/review", async (req, res) => {
+app.post("/fix", async (req, res) => {
   const { prUrl, dryRun } = req.body as { prUrl?: string; dryRun?: boolean };
 
   let reference;
@@ -206,14 +206,14 @@ app.post("/review", async (req, res) => {
   // The run's durable record: saved as it progresses, so history survives a
   // crash or Stop. Its id goes to the client first thing.
   const recorder = new RunRecorder(runStore, {
-    kind: "review",
+    kind: "fix",
     pr: reference,
   });
   await recorder.start();
   send({ kind: "run", text: recorder.id });
 
   try {
-    await runReview({
+    await runFix({
       owner: reference.owner,
       repo: reference.repo,
       prNumber: reference.prNumber,
@@ -260,10 +260,10 @@ app.post("/brief", async (req, res) => {
     return;
   }
 
-  // Same streamed-NDJSON shape as /review (see the comment there); the
+  // Same streamed-NDJSON shape as /fix (see the comment there); the
   // final rendered Markdown rides as one {kind: "result"} line rather than
   // a separate response, so this endpoint stays a single request/response
-  // like /review instead of needing a second round trip to fetch the result.
+  // like /fix instead of needing a second round trip to fetch the result.
   res.setHeader("Content-Type", "application/x-ndjson");
   res.flushHeaders();
 
@@ -271,7 +271,7 @@ app.post("/brief", async (req, res) => {
   const label = `[brief #${requestId} ${reference.owner}/${reference.repo}#${reference.prNumber}]`;
   console.log(`${label} started`);
 
-  // Same real-cancellation wiring as /review -- see the comment there for
+  // Same real-cancellation wiring as /fix -- see the comment there for
   // why this listens on the response rather than the request.
   const abortController = new AbortController();
   res.on("close", () => {

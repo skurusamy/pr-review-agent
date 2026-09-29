@@ -1,5 +1,5 @@
-export interface ReviewCommandArgs {
-  command: "review";
+export interface FixCommandArgs {
+  command: "fix";
   owner: string;
   repo: string;
   prNumber: number;
@@ -14,10 +14,10 @@ export interface BriefCommandArgs {
   post: boolean;
 }
 
-export type CliArgs = ReviewCommandArgs | BriefCommandArgs;
+export type CliArgs = FixCommandArgs | BriefCommandArgs;
 
 const USAGE =
-  "Usage: pr-review-agent review <owner/repo> <pr-number> [--dry-run]\n   or: pr-review-agent brief <owner/repo> <pr-number> [--post]";
+  "Usage: pr-review-agent fix <owner/repo> <pr-number> [--dry-run]\n   or: pr-review-agent brief <owner/repo> <pr-number> [--post]";
 
 function parseOwnerRepoAndPr(
   ownerRepo: string | undefined,
@@ -49,13 +49,13 @@ function parseOwnerRepoAndPr(
 export function parseArgs(argv: string[]): CliArgs {
   const [command, ownerRepo, prNumberRaw, ...rest] = argv;
 
-  if (command === "review") {
+  if (command === "fix") {
     const { owner, repo, prNumber } = parseOwnerRepoAndPr(
       ownerRepo,
       prNumberRaw,
     );
     return {
-      command: "review",
+      command: "fix",
       owner,
       repo,
       prNumber,

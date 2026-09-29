@@ -40,8 +40,8 @@ export interface ThreadInfo {
   url: string;
 }
 
-/** Structured progress of a Review Run, emitted alongside the text log. */
-export type ReviewEvent =
+/** Structured progress of a Fix Run, emitted alongside the text log. */
+export type FixEvent =
   | {
       type: "run-started";
       owner: string;
@@ -90,13 +90,13 @@ export interface AppliedInfo {
 }
 
 /**
- * The saved, durable account of one Review Run or PR Briefing. One record
+ * The saved, durable account of one Fix Run or PR Briefing. One record
  * type for both, discriminated by `kind`; `triggeredBy` is null until v1's
  * single shared token gives way to per-user identity.
  */
 export interface RunRecord {
   id: string;
-  kind: "review" | "briefing";
+  kind: "fix" | "briefing";
   status: RunStatus;
   startedAt: string;
   finishedAt?: string;

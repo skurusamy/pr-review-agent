@@ -3,7 +3,7 @@ import { showTabs, hideTabs } from "./panelTabs.js";
 import { streamRequest } from "./stream.js";
 import { appendLine } from "./logView.js";
 
-// The Review Run results view: a grouped list of review threads on the left,
+// The Fix Run results view: a grouped list of review threads on the left,
 // one thread's detail on the right, plus a Raw log tab (the existing log
 // panel). It draws whatever run record it holds, built live from streamed
 // events, so the same code can later draw a saved record.
@@ -246,7 +246,7 @@ function applyCounts(run) {
 }
 
 function applyBar(run) {
-  if (run.kind !== "review" || run.dryRun !== true) return null;
+  if (run.kind !== "fix" || run.dryRun !== true) return null;
   if (run.status !== "completed" || !run.pr) return null;
   const { fixes, drafts } = applyCounts(run);
   if (fixes === 0 && drafts === 0) return null;
@@ -437,7 +437,7 @@ export function startRun(id) {
   render();
 }
 
-export function applyReviewEvent(event) {
+export function applyFixEvent(event) {
   if (!record) return;
   record = applyEvent(record, event);
   scheduleRender();

@@ -1,12 +1,12 @@
 // Browser-side twin of src/runRecord/applyEvent.ts: folds the events a
-// Review Run streams into a run record shaped like the saved RunRecord, so
+// Fix Run streams into a run record shaped like the saved RunRecord, so
 // the same renderer can draw a live run and (later) a saved one. There is no
 // build step to share the TypeScript file, so this is a deliberate copy --
 // src/runRecord/runState.test.ts feeds both the same events and fails if they
 // ever drift apart.
 
 export function newRun(id) {
-  return { id, kind: "review", status: "running", threads: [], rawLog: [] };
+  return { id, kind: "fix", status: "running", threads: [], rawLog: [] };
 }
 
 export function applyEvent(record, event) {

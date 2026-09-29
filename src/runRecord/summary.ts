@@ -27,7 +27,7 @@ export function summarize(record: RunRecord): RunSummary {
   if (record.dryRun !== undefined) summary.dryRun = record.dryRun;
   if (record.applied?.complete) summary.applied = true;
 
-  if (record.kind === "review") {
+  if (record.kind === "fix") {
     const kinds = record.threads.map((t) => t.outcome?.kind);
     summary.tally = {
       threads: record.threads.length,

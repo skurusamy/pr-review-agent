@@ -3,9 +3,9 @@ import { applyEvent as serverApply } from "./applyEvent.js";
 // Plain browser JS with no types -- see the header comment in runState.js.
 // @ts-expect-error untyped module
 import * as browser from "../../public/js/runState.js";
-import type { ReviewEvent, RunRecord } from "./types.js";
+import type { FixEvent, RunRecord } from "./types.js";
 
-const events: ReviewEvent[] = [
+const events: FixEvent[] = [
   {
     type: "run-started",
     owner: "o",
@@ -59,7 +59,7 @@ const events: ReviewEvent[] = [
 
 const start = {
   id: "20260929-183012-a3f9",
-  kind: "review",
+  kind: "fix",
   status: "running",
   threads: [],
   rawLog: [],

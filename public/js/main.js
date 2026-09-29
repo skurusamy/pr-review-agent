@@ -2,7 +2,7 @@ import { streamRequest, isAbortError } from "./stream.js";
 import { appendLine, showError, clearLog, loadLog } from "./logView.js";
 import {
   startRun,
-  applyReviewEvent,
+  applyFixEvent,
   finishRun,
   resetResults,
   isActive,
@@ -16,7 +16,7 @@ import {
 } from "./history.js";
 import { clearBriefing, showBriefing, startBriefing } from "./briefing.js";
 
-const form = document.getElementById("review-form");
+const form = document.getElementById("fix-form");
 const submitButton = document.getElementById("submit-button");
 const briefButton = document.getElementById("brief-button");
 const stopButton = document.getElementById("stop-button");
@@ -85,11 +85,11 @@ form.addEventListener("submit", async (event) => {
 
   try {
     await streamRequest(
-      "/review",
+      "/fix",
       { prUrl: prUrlInput.value, dryRun: dryRunInput.checked },
       appendLine,
       controller.signal,
-      { onRun: startRun, onEvent: applyReviewEvent },
+      { onRun: startRun, onEvent: applyFixEvent },
     );
     finishRun("completed");
     // Aborting mid-stream doesn't always reject the pending read (some
@@ -111,7 +111,7 @@ form.addEventListener("submit", async (event) => {
     }
   } finally {
     setBusy(false);
-    submitButton.textContent = "Address review comments";
+    submitButton.textContent = "Fix comments";
     activeController = null;
   }
 });

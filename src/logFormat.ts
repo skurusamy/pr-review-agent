@@ -10,10 +10,10 @@ export type LogLineKind =
   | "info";
 
 /**
- * Classifies a line from the review run's log stream by its prefix, so the
+ * Classifies a line from the fix run's log stream by its prefix, so the
  * CLI (ANSI colors) and the UI (CSS classes) can render each kind distinctly
  * without either one re-deriving the same rules twice. "error" is never
- * produced here -- runReview's own log lines never report a caught
+ * produced here -- runFix's own log lines never report a caught
  * exception, only its callers do, and they label that line directly.
  */
 export function classifyLogLine(line: string): LogLineKind {

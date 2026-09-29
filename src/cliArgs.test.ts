@@ -3,9 +3,9 @@ import { parseArgs } from "./cliArgs.js";
 
 describe("parseArgs", () => {
   it("parses a well-formed review command", () => {
-    const args = parseArgs(["review", "skurusamy/pr-review-agent", "10"]);
+    const args = parseArgs(["fix", "skurusamy/pr-review-agent", "10"]);
     expect(args).toEqual({
-      command: "review",
+      command: "fix",
       owner: "skurusamy",
       repo: "pr-review-agent",
       prNumber: 10,
@@ -15,13 +15,13 @@ describe("parseArgs", () => {
 
   it("recognizes --dry-run", () => {
     const args = parseArgs([
-      "review",
+      "fix",
       "skurusamy/pr-review-agent",
       "10",
       "--dry-run",
     ]);
-    expect(args.command).toBe("review");
-    expect(args.command === "review" && args.dryRun).toBe(true);
+    expect(args.command).toBe("fix");
+    expect(args.command === "fix" && args.dryRun).toBe(true);
   });
 
   it("rejects an unknown command", () => {
@@ -55,23 +55,17 @@ describe("parseArgs", () => {
   });
 
   it("rejects an owner/repo without a slash", () => {
-    expect(() => parseArgs(["review", "notaslash", "1"])).toThrow(
-      /owner\/repo/,
-    );
+    expect(() => parseArgs(["fix", "notaslash", "1"])).toThrow(/owner\/repo/);
   });
 
   it("rejects a non-numeric PR number", () => {
-    expect(() => parseArgs(["review", "a/b", "not-a-number"])).toThrow(
+    expect(() => parseArgs(["fix", "a/b", "not-a-number"])).toThrow(
       /positive PR number/,
     );
   });
 
   it("rejects a zero or negative PR number", () => {
-    expect(() => parseArgs(["review", "a/b", "0"])).toThrow(
-      /positive PR number/,
-    );
-    expect(() => parseArgs(["review", "a/b", "-5"])).toThrow(
-      /positive PR number/,
-    );
+    expect(() => parseArgs(["fix", "a/b", "0"])).toThrow(/positive PR number/);
+    expect(() => parseArgs(["fix", "a/b", "-5"])).toThrow(/positive PR number/);
   });
 });

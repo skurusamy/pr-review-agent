@@ -2,12 +2,12 @@
 
 A CLI agent that triages a pull request's inline review comments: applying a locally-validated fix for real bugs, or drafting a reply for everything else.
 
-## Run a review
+## Fix review comments
 
 From the CLI (no build step needed during development):
 
 ```bash
-npm run dev -- review <owner/repo> <pr-number> [--dry-run]
+npm run dev -- fix <owner/repo> <pr-number> [--dry-run]
 ```
 
 Or paste a PR link into the local web UI instead:
@@ -16,7 +16,7 @@ Or paste a PR link into the local web UI instead:
 npm run serve
 ```
 
-Opens at http://localhost:4127 (override with the `PORT` env var). Same `runReview()` logic as the CLI, but progress streams into the browser live, line by line, instead of you watching a terminal.
+Opens at http://localhost:4127 (override with the `PORT` env var). Same `runFix()` logic as the CLI, but progress streams into the browser live, line by line, instead of you watching a terminal.
 
 `--dry-run` (CLI) / the UI's "Dry run" checkbox does everything for real — including edits and the Validation Gate — except the final `git push` and GitHub review-creation call, which are only printed.
 
