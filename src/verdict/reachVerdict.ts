@@ -45,15 +45,34 @@ const MAX_TURNS = 8;
 // verdict out of free-text, which would be unreliable. Zod's schema doubles
 // as the tool's input validation AND the source of the JSON schema Claude
 // sees describing what arguments to pass.
+const verdictInputShape = {
+  verdict: z
+    .enum(["bug", "not-a-bug"])
+    .describe("Whether this review comment is pointing at a real bug"),
+  reasoning: z
+    .string()
+    .trim()
+    .min(1)
+    .describe("A brief explanation for the verdict"),
+};
+const verdictInputSchema = z.object(verdictInputShape);
+
+/**
+ * The model's submit_verdict arguments, or undefined if they are malformed.
+ * The stream shows them before the SDK has validated them, and an unchecked
+ * cast would let a call with a missing or misspelled verdict through: which
+ * decideAction would then treat as "not a bug", the exact thing
+ * VerdictIncompleteError exists to prevent.
+ */
+export function parseVerdictInput(raw: unknown): Verdict | undefined {
+  const parsed = verdictInputSchema.safeParse(raw);
+  return parsed.success ? parsed.data : undefined;
+}
+
 const submitVerdictTool = tool(
   "submit_verdict",
   "Report your final verdict on whether the review comment points at a real bug in the code.",
-  {
-    verdict: z
-      .enum(["bug", "not-a-bug"])
-      .describe("Whether this review comment is pointing at a real bug"),
-    reasoning: z.string().describe("A brief explanation for the verdict"),
-  },
+  verdictInputShape,
   // This handler's return value is what the MODEL sees as the tool's result
   // (a normal MCP tool response) — it is NOT how we get the verdict back into
   // our own code. We capture that separately, by scanning the message stream
@@ -180,8 +199,17 @@ export async function reachVerdict(
             continue;
           }
           if (block.name.endsWith("submit_verdict")) {
-            const input = block.input as Verdict;
-            return { verdict: input.verdict, reasoning: input.reasoning };
+            // On a malformed call keep looping: the SDK reports the
+            // validation error back to the model, which can resubmit
+            // within the turn budget.
+            const input = parseVerdictInput(block.input);
+            if (!input) {
+              log(
+                "Warning: submit_verdict had an invalid shape; waiting for a retry.",
+              );
+              continue;
+            }
+            return input;
           }
           if (isNoiseTool(block.name)) {
             continue;

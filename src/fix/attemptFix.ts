@@ -48,14 +48,29 @@ const MAX_TURNS_PER_ATTEMPT = 10;
 // submit_verdict -- they belong to different loops with different jobs.
 // Asking for a one-line summary here is what makes the eventual commit
 // message meaningful instead of generic.
+const fixInputShape = {
+  summary: z
+    .string()
+    .trim()
+    .min(1)
+    .describe("A one-line summary of the fix, for the commit message"),
+};
+const fixInputSchema = z.object(fixInputShape);
+
+/**
+ * The model's submit_fix arguments, or undefined if malformed. The summary
+ * becomes the commit message, so a call without one must not pass as
+ * "undefined".
+ */
+export function parseFixInput(raw: unknown): { summary: string } | undefined {
+  const parsed = fixInputSchema.safeParse(raw);
+  return parsed.success ? parsed.data : undefined;
+}
+
 const submitFixTool = tool(
   "submit_fix",
   "Call this once your edit fixes the bug and is ready to be validated.",
-  {
-    summary: z
-      .string()
-      .describe("A one-line summary of the fix, for the commit message"),
-  },
+  fixInputShape,
   async () => {
     return {
       content: [
@@ -175,7 +190,13 @@ async function runAttempt(
             continue;
           }
           if (block.name.endsWith("submit_fix")) {
-            const input = block.input as { summary: string };
+            const input = parseFixInput(block.input);
+            if (!input) {
+              log(
+                "Warning: submit_fix had an invalid shape; waiting for a retry.",
+              );
+              continue;
+            }
             return { summary: input.summary, sessionId };
           }
           if (isNoiseTool(block.name)) {

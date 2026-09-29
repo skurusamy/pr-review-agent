@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { buildPrompt, decideAction, type Verdict } from "./reachVerdict.js";
+import {
+  buildPrompt,
+  decideAction,
+  parseVerdictInput,
+  type Verdict,
+} from "./reachVerdict.js";
 import type { ReviewThread } from "../github/types.js";
 
 function makeThread(
@@ -104,5 +109,24 @@ describe("decideAction", () => {
     expect(decideAction(makeThread({ outdated: true }), bug)).toBe(
       "draft-reply",
     );
+  });
+});
+
+describe("parseVerdictInput", () => {
+  it("accepts a complete verdict", () => {
+    expect(
+      parseVerdictInput({ verdict: "bug", reasoning: "Off by one." }),
+    ).toEqual({ verdict: "bug", reasoning: "Off by one." });
+  });
+
+  it("rejects a missing, misspelled or empty submission instead of letting it read as not-a-bug", () => {
+    expect(parseVerdictInput({ reasoning: "Fine." })).toBeUndefined();
+    expect(
+      parseVerdictInput({ verdict: "not a bug", reasoning: "Fine." }),
+    ).toBeUndefined();
+    expect(
+      parseVerdictInput({ verdict: "not-a-bug", reasoning: "  " }),
+    ).toBeUndefined();
+    expect(parseVerdictInput(undefined)).toBeUndefined();
   });
 });

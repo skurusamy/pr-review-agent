@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildFixPrompt } from "./attemptFix.js";
+import { buildFixPrompt, parseFixInput } from "./attemptFix.js";
 import type { ReviewThread } from "../github/types.js";
 import type { Verdict } from "../verdict/reachVerdict.js";
 
@@ -44,5 +44,18 @@ describe("buildFixPrompt", () => {
   it("has no replies section for a thread nobody replied to", () => {
     const alone = buildFixPrompt({ ...thread, replies: [] }, verdict);
     expect(alone).not.toContain("Replies in this thread");
+  });
+});
+
+describe("parseFixInput", () => {
+  it("accepts a summary", () => {
+    expect(parseFixInput({ summary: "Use <= in the loop bound" })).toEqual({
+      summary: "Use <= in the loop bound",
+    });
+  });
+
+  it("rejects a missing or blank summary, so the commit message can't be 'undefined'", () => {
+    expect(parseFixInput({})).toBeUndefined();
+    expect(parseFixInput({ summary: "   " })).toBeUndefined();
   });
 });
