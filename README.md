@@ -34,7 +34,8 @@ You paste a PR link (or use the command line) and pick one of three things. The 
 
 Use it when someone sends you a PR and you want the gist before reading the code.
 
-- It reads the PR's title, description, comments and code changes, and asks the AI to explain them. The AI only sees that text and can't open any files.
+- It reads the PR's title, description, comments and code changes, and asks the AI to explain them. The AI only sees that text and can't open any files or links.
+- If the title or description mentions a GitHub issue in the same repo (`#123`, `owner/repo#123`, or a link to it), the agent reads that issue too and shows it to the AI as background. The briefing then says whether the change appears to deliver what the issue asks for, and the issues it used are listed in the report. It reads at most 5, and a mentioned PR is used as background only.
 - You get a plain summary, a list of changed files, a diagram of the change's shape, and a short list of things worth double-checking, including where the code doesn't match the description.
 - Optional: download it as a file, or click **Post to GitHub** to add it as a comment on the PR. Everyone on the PR can see that comment.
 
@@ -91,6 +92,7 @@ See [CONTEXT.md](./CONTEXT.md) for the project's vocabulary, the [wayfinder map]
 ## Limits
 
 - **Same-repo PRs only** for Review PR, Fix comments and Apply. They check out the PR's branch, and a PR from a fork is refused with a clear error. Brief PR needs no checkout, so it works on forks.
+- **Linked issues (Brief PR)** are read for the same repo only. References to other repos, Jira, Linear or other trackers, and ordinary web links are not followed.
 - **Fix comments** only handles inline review comments on the diff, not the PR's top-level conversation. A comment gets up to 3 Fix Attempts before falling back to a draft reply.
 - **The Validation Gate** runs the target repo's own `typecheck`, `lint` and `test` npm scripts, in that order, and stops at the first failure. A script the repo doesn't define is skipped. It assumes npm.
 - **Untrusted PRs.** Every model session runs locked down, because it reads content other people wrote: only the tools it needs exist for the model (none for Brief PR, Read/Grep/Glob for Review PR and the Verdict step, plus Edit for a Fix Attempt), no settings are loaded from the checked-out PR, and the GitHub token is neither in the session's environment nor in the checkout's `.git/config` (a push carries it in memory only). The Brief PR session also runs in the system temp directory instead of the server's own. Not covered: the Read tool is not confined to the checkout (it can open other files the server's user can), and the Anthropic key stays in the environment because the session needs it, so this is suited to a local single-user tool, not yet to a shared deployment. This has been tested with the model faked and with real git; the newest parts (Brief, Verdict and Fix Attempt) have not yet been run against the live model.
