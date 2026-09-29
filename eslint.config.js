@@ -29,6 +29,7 @@ export default tseslint.config(
         navigator: "readonly",
         history: "readonly",
         location: "readonly",
+        Event: "readonly",
         requestAnimationFrame: "readonly",
       },
     },

@@ -60,6 +60,7 @@ function row(summary) {
       ? span("hx-badge", summary.dryRun ? "Dry run" : "Live")
       : "",
     span(`hx-badge hx-${summary.status}`, summary.status),
+    summary.applied ? span("hx-badge hx-completed", "Applied") : "",
     time,
   );
   button.append(top);
@@ -132,6 +133,7 @@ export async function initHistory(handlers) {
   onMissing = handlers.onMissing;
   filter.addEventListener("input", render);
   window.addEventListener("hashchange", openFromHash);
+  document.addEventListener("history-stale", refreshHistory);
   await refreshHistory();
   openFromHash();
 }

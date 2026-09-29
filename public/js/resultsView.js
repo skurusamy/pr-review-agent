@@ -1,5 +1,7 @@
 import { applyEvent, newRun, groupThreads } from "./runState.js";
 import { showTabs, hideTabs } from "./panelTabs.js";
+import { streamRequest } from "./stream.js";
+import { appendLine } from "./logView.js";
 
 // The Review Run results view: a grouped list of review threads on the left,
 // one thread's detail on the right, plus a Raw log tab (the existing log
@@ -45,7 +47,10 @@ function outcomeInfo(thread, run) {
   }
   return {
     fix: {
-      label: run.dryRun ? "Fix ready (would push)" : "Fix pushed",
+      label:
+        run.dryRun && !run.applied?.complete
+          ? "Fix ready (would push)"
+          : "Fix pushed",
       tone: "success",
     },
     draft: { label: "Draft reply", tone: "info" },
@@ -225,12 +230,143 @@ function banner(run) {
   return h("div", { class: "rv-banner" }, parts.filter(Boolean).join(" "));
 }
 
+// ---- Applying a dry run's saved results to the PR. The server does the work
+// (POST /runs/:id/apply); this is the confirm step and its progress. ----
+
+let applyUi = { phase: "idle", message: "" };
+
+const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+
+function applyCounts(run) {
+  const kinds = run.threads.map((t) => t.outcome?.kind);
+  return {
+    fixes: kinds.filter((k) => k === "fix").length,
+    drafts: kinds.filter((k) => k === "draft" || k === "fix-failed").length,
+  };
+}
+
+function applyBar(run) {
+  if (run.kind !== "review" || run.dryRun !== true) return null;
+  if (run.status !== "completed" || !run.pr) return null;
+  const { fixes, drafts } = applyCounts(run);
+  if (fixes === 0 && drafts === 0) return null;
+
+  if (run.applied?.complete) {
+    return h(
+      "div",
+      { class: "rv-apply done" },
+      `Applied on ${new Date(run.applied.finishedAt ?? run.applied.at).toLocaleString()}: ${plural(fixes, "fix", "fixes")} pushed, ${plural(drafts, "draft reply", "draft replies")} in a pending review.`,
+    );
+  }
+
+  const target = `${run.pr.owner}/${run.pr.repo}#${run.pr.prNumber}`;
+  const what = [
+    fixes && `push ${plural(fixes, "fix", "fixes")}`,
+    drafts &&
+      `create a pending review with ${plural(drafts, "draft reply", "draft replies")}`,
+  ]
+    .filter(Boolean)
+    .join(" and ");
+  const bar = h("div", { class: "rv-apply" });
+  const failed = (run.applied?.items ?? []).filter(
+    (i) => i.status === "failed",
+  );
+
+  if (applyUi.phase === "running") {
+    bar.append(h("span", {}, applyUi.message || "Applying..."));
+    return bar;
+  }
+  if (applyUi.phase === "confirm") {
+    const confirm = h("button", { type: "button" }, "Confirm");
+    confirm.addEventListener("click", () => startApply(run));
+    const cancel = h(
+      "button",
+      { type: "button", class: "secondary" },
+      "Cancel",
+    );
+    cancel.addEventListener("click", () => {
+      applyUi = { phase: "idle", message: "" };
+      render();
+    });
+    bar.append(
+      h("span", {}, `Apply to ${target}? This will ${what}.`),
+      confirm,
+      cancel,
+    );
+    return bar;
+  }
+
+  const start = h(
+    "button",
+    { type: "button" },
+    run.applied ? "Retry apply" : "Apply this run",
+  );
+  start.addEventListener("click", () => {
+    applyUi = { phase: "confirm", message: "" };
+    render();
+  });
+  bar.append(
+    h(
+      "span",
+      {},
+      run.applied
+        ? `Partly applied: ${plural(failed.length, "item", "items")} still to do.`
+        : `Not applied yet: ${what}.`,
+    ),
+    start,
+  );
+  if (applyUi.message)
+    bar.append(h("p", { class: "rv-apply-error" }, applyUi.message));
+  for (const item of failed) {
+    const thread = run.threads.find((t) => t.threadId === item.threadId);
+    bar.append(
+      h(
+        "p",
+        { class: "rv-apply-error" },
+        `${thread ? location(thread) : item.threadId}: ${item.detail}`,
+      ),
+    );
+  }
+  return bar;
+}
+
+async function refetchRecord() {
+  const response = await fetch(`/runs/${record.id}`);
+  if (response.ok) record = { ...(await response.json()), saved: record.saved };
+}
+
+async function startApply(run) {
+  applyUi = { phase: "running", message: "Applying..." };
+  render();
+  try {
+    await streamRequest(`/runs/${run.id}/apply`, {}, (kind, text) => {
+      appendLine(kind, text);
+      applyUi = { phase: "running", message: text };
+      render();
+    });
+    applyUi = { phase: "idle", message: "" };
+  } catch (err) {
+    applyUi = {
+      phase: "idle",
+      message: err instanceof Error ? err.message : String(err),
+    };
+  }
+  // The server's record now carries the outcome (and any failed items).
+  try {
+    await refetchRecord();
+  } catch {
+    // Keep what's on screen; the message above already says what happened.
+  }
+  document.dispatchEvent(new Event("history-stale"));
+  render();
+}
+
 function render() {
   renderQueued = false;
   if (!record) return;
   const run = record;
 
-  const nodes = [banner(run)];
+  const nodes = [banner(run), applyBar(run)].filter(Boolean);
   if (run.threads.length === 0) {
     nodes.push(
       h(
@@ -292,6 +428,7 @@ export function isActive() {
 
 export function startRun(id) {
   record = newRun(id);
+  applyUi = { phase: "idle", message: "" };
 
   selectedId = null;
   reasoningOpen.clear();
@@ -310,11 +447,19 @@ export function finishRun(status, error) {
   if (!record) return;
   record = { ...record, status, ...(error ? { error } : {}) };
   render();
+  // The apply step needs what only the server's record has (the PR, and any
+  // earlier apply), so a finished dry run pulls it in.
+  if (status === "completed" && record.dryRun) {
+    refetchRecord()
+      .then(render)
+      .catch(() => {});
+  }
 }
 
 /** Shows a saved RunRecord, read-only, in the same view a live run uses. */
 export function showRecord(saved) {
   record = { ...saved, saved: true };
+  applyUi = { phase: "idle", message: "" };
   selectedId = null;
   reasoningOpen.clear();
   patchExpanded.clear();

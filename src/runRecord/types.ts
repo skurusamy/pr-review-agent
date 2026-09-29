@@ -67,6 +67,28 @@ export interface ThreadRecord extends ThreadInfo {
   log: LogEntry[];
 }
 
+/** What applying one item of a dry run did (or why it didn't). */
+export interface AppliedItem {
+  threadId: number;
+  step: "fix" | "draft";
+  status: "done" | "skipped" | "failed";
+  detail?: string;
+}
+
+/**
+ * The result of applying a dry-run record to the PR. `pushed` maps a fix's
+ * thread id to the commit `git am` recreated for it: recorded as soon as the
+ * push succeeds, so a retry after a later failure never pushes twice.
+ */
+export interface AppliedInfo {
+  at: string;
+  finishedAt?: string;
+  /** True once nothing failed; only then is the record fully applied. */
+  complete: boolean;
+  items: AppliedItem[];
+  pushed: Record<number, string>;
+}
+
 /**
  * The saved, durable account of one Review Run or PR Briefing. One record
  * type for both, discriminated by `kind`; `triggeredBy` is null until v1's
@@ -86,4 +108,5 @@ export interface RunRecord {
   rawLog: LogEntry[];
   briefingMarkdown?: string;
   error?: string;
+  applied?: AppliedInfo;
 }
