@@ -50,6 +50,28 @@ describe("parseArgs", () => {
     expect(args.command === "brief" && args.post).toBe(true);
   });
 
+  it("parses a review command", () => {
+    expect(parseArgs(["review", "skurusamy/pr-review-agent", "10"])).toEqual({
+      command: "review",
+      owner: "skurusamy",
+      repo: "pr-review-agent",
+      prNumber: 10,
+    });
+  });
+
+  it("rejects a review command with a bad owner/repo or PR number", () => {
+    expect(() => parseArgs(["review", "notaslash", "1"])).toThrow(
+      /owner\/repo/,
+    );
+    expect(() => parseArgs(["review", "a/b", "0"])).toThrow(
+      /positive PR number/,
+    );
+  });
+
+  it("lists all three commands in the usage text", () => {
+    expect(() => parseArgs(["nope"])).toThrow(/brief .*\n.*review .*\n.*fix /);
+  });
+
   it("rejects a brief command with a bad owner/repo", () => {
     expect(() => parseArgs(["brief", "notaslash", "1"])).toThrow(/owner\/repo/);
   });

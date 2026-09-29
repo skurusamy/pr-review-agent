@@ -1,14 +1,20 @@
 # pr-review-agent
 
-A CLI agent that triages a pull request's inline review comments: applying a locally-validated fix for real bugs, or drafting a reply for everything else.
+An agent that helps with a pull request in three ways. Each is its own action, on the CLI and as a button in the local web UI:
 
-## Fix review comments
+| Action           | CLI                                        | What it does                                                                                                                                                         |
+| ---------------- | ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Brief PR**     | `brief <owner/repo> <pr-number> [--post]`  | Read-only summary of what the PR does, with a changed-files tree, a diagram, and things to double-check. `--post` adds it as a PR comment.                           |
+| **Review PR**    | `review <owner/repo> <pr-number>`          | Reviews the PR's code (bugs, security, missing tests, drift from the description) and reports **Findings** with a file and line. Never approves or requests changes. |
+| **Fix comments** | `fix <owner/repo> <pr-number> [--dry-run]` | Triages review comments others left: applies a locally-validated fix for real bugs, drafts a reply for the rest.                                                     |
 
-From the CLI (no build step needed during development):
+Run any of them with, for example:
 
 ```bash
-npm run dev -- fix <owner/repo> <pr-number> [--dry-run]
+npm run dev -- review <owner/repo> <pr-number>
 ```
+
+`brief` and `review` are read-only: they write a Markdown file (`pr-briefing-…md` / `code-review-…md`) and print it, and post nothing unless you ask.
 
 Or paste a PR link into the local web UI instead:
 
@@ -16,9 +22,9 @@ Or paste a PR link into the local web UI instead:
 npm run serve
 ```
 
-Opens at http://localhost:4127 (override with the `PORT` env var). Same `runFix()` logic as the CLI, but progress streams into the browser live, line by line, instead of you watching a terminal.
+Opens at http://localhost:4127 (override with the `PORT` env var). The same logic as the CLI, but progress streams into the browser live, line by line, and a red **Stop** button cancels a long run for real.
 
-`--dry-run` (CLI) / the UI's "Dry run" checkbox does everything for real — including edits and the Validation Gate — except the final `git push` and GitHub review-creation call, which are only printed.
+For **Fix comments**, `--dry-run` (CLI) / the UI's "Dry run" checkbox does everything for real — including edits and the Validation Gate — except the final `git push` and GitHub review-creation call, which are only printed.
 
 See [CONTEXT.md](./CONTEXT.md) for the project's vocabulary, the [wayfinder map](https://github.com/skurusamy/pr-review-agent/issues/1) for how this is being built, and the [Agent Blueprint](https://claude.ai/artifact/RjzLkJ3ys8nY3Uken1woEw) for an interactive walkthrough of the tools, the Claude Agent SDK harness, and the step-by-step flow.
 

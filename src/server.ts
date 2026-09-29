@@ -6,6 +6,7 @@ import { loadSecrets } from "./secrets.js";
 import { parsePrUrl } from "./prUrl.js";
 import { runFix } from "./fixRun.js";
 import { runBrief } from "./briefRun.js";
+import { runCodeReview } from "./codeReviewRun.js";
 import { createOctokit } from "./github/client.js";
 import { postBriefingComment } from "./briefing/postBriefingComment.js";
 import { classifyLogLine } from "./logFormat.js";
@@ -246,6 +247,79 @@ app.post("/fix", async (req, res) => {
     res.end();
     // Keep the store bounded; nothing waits on this or depends on it.
     void pruneRuns(runStore, runsMax).catch(() => {});
+  }
+});
+
+// A Code Review: same streamed-NDJSON shape and real-cancellation wiring as
+// /brief (see the comments there and on /fix). The Markdown rides as the
+// {kind: "result"} line, for the download; the structured review rides as one
+// {kind: "data"} line, which is what the Findings panel renders from (and what
+// posting will need), rather than the UI re-parsing Markdown. Not saved as a
+// run record yet -- see the map's note on Findings joining run history.
+app.post("/review", async (req, res) => {
+  const { prUrl } = req.body as { prUrl?: string };
+
+  let reference;
+  try {
+    reference = parsePrUrl(prUrl ?? "");
+  } catch (error) {
+    res.status(400).json({ error: formatError(error) });
+    return;
+  }
+
+  res.setHeader("Content-Type", "application/x-ndjson");
+  res.flushHeaders();
+
+  const requestId = ++requestCounter;
+  const label = `[review #${requestId} ${reference.owner}/${reference.repo}#${reference.prNumber}]`;
+  console.log(`${label} started`);
+
+  const abortController = new AbortController();
+  res.on("close", () => {
+    if (!res.writableEnded) {
+      console.log(`${label} client disconnected -- aborting`);
+      abortController.abort();
+    }
+  });
+
+  const send = (entry: {
+    kind: string;
+    text?: string;
+    data?: unknown;
+  }): void => {
+    if (res.writableEnded) return;
+    res.write(`${JSON.stringify(entry)}\n`);
+  };
+
+  try {
+    const result = await runCodeReview({
+      owner: reference.owner,
+      repo: reference.repo,
+      prNumber: reference.prNumber,
+      githubToken: secrets.githubToken,
+      log: (line) => send({ kind: classifyLogLine(line), text: line.trim() }),
+      abortController,
+    });
+    send({
+      kind: "data",
+      data: {
+        title: result.title,
+        prUrl: result.prUrl,
+        review: result.review,
+      },
+    });
+    send({ kind: "result", text: result.markdown });
+    send({ kind: "done", text: "" });
+    console.log(`${label} finished`);
+  } catch (error) {
+    if (!abortController.signal.aborted) {
+      send({ kind: "error", text: formatError(error) });
+      console.log(`${label} failed: ${formatError(error)}`);
+    } else {
+      console.log(`${label} stopped`);
+    }
+  } finally {
+    res.end();
   }
 });
 

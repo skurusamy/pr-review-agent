@@ -9,6 +9,7 @@
     <link rel="stylesheet" href="css/base.css" />
     <link rel="stylesheet" href="css/log.css" />
     <link rel="stylesheet" href="css/briefing.css" />
+    <link rel="stylesheet" href="css/codeReview.css" />
     <link rel="stylesheet" href="css/results.css" />
     <link rel="stylesheet" href="css/history.css" />
     <script type="module" src="js/main.js"></script>
@@ -27,14 +28,18 @@
 
       <label class="checkbox-row">
         <input type="checkbox" id="dryRun" name="dryRun" checked />
-        Dry run (compute everything, but don't push or write to GitHub)
+        Dry run, for Fix comments (compute everything, but don't push or write
+        to GitHub)
       </label>
 
       <div class="button-row">
-        <button type="submit" id="submit-button">Fix comments</button>
         <button type="button" id="brief-button" class="secondary">
-          Generate PR Briefing
+          Brief PR
         </button>
+        <button type="button" id="review-button" class="secondary">
+          Review PR
+        </button>
+        <button type="submit" id="submit-button">Fix comments</button>
         <button type="button" id="stop-button" class="stop" hidden>
           <span class="stop-icon"></span>Stop
         </button>
@@ -62,5 +67,6 @@
     <div id="results-summary" hidden></div>
     <div id="output" hidden></div>
     <div id="briefing" hidden></div>
+    <div id="code-review" hidden></div>
   </body>
 </html>

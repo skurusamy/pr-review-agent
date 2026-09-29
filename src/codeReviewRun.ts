@@ -20,6 +20,8 @@ export interface CodeReviewRunOptions {
 }
 
 export interface CodeReviewResult {
+  title: string;
+  prUrl: string;
   review: CodeReview;
   markdown: string;
 }
@@ -86,6 +88,8 @@ export async function runCodeReview(
 
     const prUrl = `https://github.com/${owner}/${repo}/pull/${prNumber}`;
     return {
+      title: context.title,
+      prUrl,
       review,
       markdown: formatCodeReviewMarkdown(context.title, prUrl, review),
     };

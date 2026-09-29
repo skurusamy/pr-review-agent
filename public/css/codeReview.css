@@ -1,0 +1,69 @@
+/* The Code Review panel. Layout, headings, code and list styles are shared
+   with the Briefing (briefing.css); this file only adds the finding cards. */
+.cr-finding {
+  border: 1px solid var(--border);
+  border-left-width: 4px;
+  border-radius: var(--radius);
+  padding: var(--space-3) var(--space-4);
+  margin: var(--space-3) 0;
+  background: var(--surface);
+}
+.cr-high {
+  border-left-color: var(--danger);
+}
+.cr-medium {
+  border-left-color: var(--warning);
+}
+.cr-low {
+  border-left-color: var(--border-strong);
+}
+.cr-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+.cr-badge {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 0.05rem 0.4rem;
+  border-radius: 3px;
+  border: 1px solid currentColor;
+  flex: none;
+}
+.cr-badge-high {
+  color: var(--danger);
+}
+.cr-badge-medium {
+  color: var(--warning);
+}
+.cr-badge-low {
+  color: var(--text-muted);
+}
+.cr-title {
+  overflow-wrap: anywhere;
+}
+.cr-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: var(--space-1) 0 var(--space-2);
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+.cr-meta code {
+  overflow-wrap: anywhere;
+}
+.cr-category {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0 0.5rem;
+}
+.cr-body p:first-child {
+  margin-top: 0;
+}
+.cr-body p:last-child {
+  margin-bottom: 0;
+}

@@ -4,6 +4,7 @@ import { parseArgs } from "./cliArgs.js";
 import { loadSecrets } from "./secrets.js";
 import { runFix } from "./fixRun.js";
 import { runBrief } from "./briefRun.js";
+import { runCodeReview } from "./codeReviewRun.js";
 import { createOctokit } from "./github/client.js";
 import { postBriefingComment } from "./briefing/postBriefingComment.js";
 import { colorizeLine } from "./cliLog.js";
@@ -27,6 +28,24 @@ async function main(): Promise<void> {
       githubToken,
       log,
     });
+    return;
+  }
+
+  if (args.command === "review") {
+    const { markdown } = await runCodeReview({
+      owner: args.owner,
+      repo: args.repo,
+      prNumber: args.prNumber,
+      githubToken,
+      log,
+    });
+    console.log(`\n${markdown}`);
+
+    // Same as brief: the file is written for the human to keep or share;
+    // nothing is posted to GitHub by this command.
+    const fileName = `code-review-${args.owner}-${args.repo}-${args.prNumber}.md`;
+    await writeFile(fileName, markdown, "utf-8");
+    log(`\nWrote ${fileName}`);
     return;
   }
 

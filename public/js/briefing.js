@@ -1,4 +1,5 @@
 import { showTabs, selectTab, hideTabs } from "./panelTabs.js";
+import { h, inline, downloadMarkdown } from "./dom.js";
 
 const briefingBox = document.getElementById("briefing");
 
@@ -79,27 +80,9 @@ function prParts(prUrl) {
   return m ? { owner: m[1], repo: m[2], number: m[3] } : null;
 }
 
-// ---- Rendering. Text inside a briefing comes from PR titles,
-// descriptions and comments, so it's never trusted as HTML: everything
-// below is built with textContent, and only the SVG mermaid itself
-// generates is inserted as markup. ----
-
-function h(tag, className, ...kids) {
-  const el = document.createElement(tag);
-  if (className) el.className = className;
-  for (const kid of kids.flat(Infinity)) {
-    if (kid == null || kid === false) continue;
-    el.append(kid.nodeType ? kid : document.createTextNode(kid));
-  }
-  return el;
-}
-
-function inline(text) {
-  return text.split("`").map((part, i) => {
-    if (i % 2 === 1) return h("code", "", part);
-    return part;
-  });
-}
+// ---- Rendering. Everything below is built with textContent via h()/inline()
+// (see dom.js), and only the SVG mermaid itself generates is inserted as
+// markup. ----
 
 async function diagramView(source) {
   const box = h("div", "diagram");
@@ -250,15 +233,12 @@ function actionsView(prUrl) {
   download.type = "button";
   download.addEventListener("click", () => {
     if (!currentBriefing) return;
-    const blob = new Blob([currentBriefing], { type: "text/markdown" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = parts
-      ? `pr-briefing-${parts.owner}-${parts.repo}-${parts.number}.md`
-      : "pr-briefing.md";
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadMarkdown(
+      parts
+        ? `pr-briefing-${parts.owner}-${parts.repo}-${parts.number}.md`
+        : "pr-briefing.md",
+      currentBriefing,
+    );
   });
 
   // Posting is a visible write to the PR, so it takes a second, explicit

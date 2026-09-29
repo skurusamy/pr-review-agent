@@ -14,10 +14,20 @@ export interface BriefCommandArgs {
   post: boolean;
 }
 
-export type CliArgs = FixCommandArgs | BriefCommandArgs;
+export interface ReviewCommandArgs {
+  command: "review";
+  owner: string;
+  repo: string;
+  prNumber: number;
+}
 
-const USAGE =
-  "Usage: pr-review-agent fix <owner/repo> <pr-number> [--dry-run]\n   or: pr-review-agent brief <owner/repo> <pr-number> [--post]";
+export type CliArgs = FixCommandArgs | BriefCommandArgs | ReviewCommandArgs;
+
+const USAGE = [
+  "Usage: pr-review-agent brief <owner/repo> <pr-number> [--post]",
+  "   or: pr-review-agent review <owner/repo> <pr-number>",
+  "   or: pr-review-agent fix <owner/repo> <pr-number> [--dry-run]",
+].join("\n");
 
 function parseOwnerRepoAndPr(
   ownerRepo: string | undefined,
@@ -75,6 +85,14 @@ export function parseArgs(argv: string[]): CliArgs {
       prNumber,
       post: rest.includes("--post"),
     };
+  }
+
+  if (command === "review") {
+    const { owner, repo, prNumber } = parseOwnerRepoAndPr(
+      ownerRepo,
+      prNumberRaw,
+    );
+    return { command: "review", owner, repo, prNumber };
   }
 
   throw new Error(`Unknown command "${command ?? ""}". ${USAGE}`);

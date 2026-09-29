@@ -15,10 +15,16 @@ import {
   setHistoryBusy,
 } from "./history.js";
 import { clearBriefing, showBriefing, startBriefing } from "./briefing.js";
+import {
+  clearCodeReview,
+  showCodeReview,
+  startCodeReview,
+} from "./codeReview.js";
 
 const form = document.getElementById("fix-form");
 const submitButton = document.getElementById("submit-button");
 const briefButton = document.getElementById("brief-button");
+const reviewButton = document.getElementById("review-button");
 const stopButton = document.getElementById("stop-button");
 const prUrlInput = document.getElementById("prUrl");
 const dryRunInput = document.getElementById("dryRun");
@@ -32,12 +38,14 @@ let activeController = null;
 function resetPanels() {
   clearLog();
   clearBriefing();
+  clearCodeReview();
   resetResults();
 }
 
 function setBusy(busy) {
   submitButton.disabled = busy;
   briefButton.disabled = busy;
+  reviewButton.disabled = busy;
   stopButton.hidden = !busy;
   // Opening a saved run mid-stream would replace the live one on screen.
   setHistoryBusy(busy);
@@ -121,7 +129,7 @@ briefButton.addEventListener("click", async () => {
   clearOpenRun();
   startBriefing();
   setBusy(true);
-  briefButton.textContent = "Generating...";
+  briefButton.textContent = "Briefing...";
   const controller = new AbortController();
   activeController = controller;
 
@@ -145,7 +153,46 @@ briefButton.addEventListener("click", async () => {
     }
   } finally {
     setBusy(false);
-    briefButton.textContent = "Generate PR Briefing";
+    briefButton.textContent = "Brief PR";
+    activeController = null;
+  }
+});
+
+reviewButton.addEventListener("click", async () => {
+  resetPanels();
+  clearOpenRun();
+  startCodeReview();
+  setBusy(true);
+  reviewButton.textContent = "Reviewing...";
+  const controller = new AbortController();
+  activeController = controller;
+
+  // The structured review arrives on its own line, just before the Markdown
+  // result; the panel needs both (cards from the first, download from the
+  // second), so it is held here until the stream ends.
+  let data = null;
+  try {
+    const markdown = await streamRequest(
+      "/review",
+      { prUrl: prUrlInput.value },
+      appendLine,
+      controller.signal,
+      { onData: (d) => (data = d) },
+    );
+    if (controller.signal.aborted) {
+      appendLine("warn", "Stopped.");
+    } else if (data && markdown) {
+      showCodeReview(data, markdown);
+    }
+  } catch (err) {
+    if (isAbortError(err) || controller.signal.aborted) {
+      appendLine("warn", "Stopped.");
+    } else {
+      showError(err);
+    }
+  } finally {
+    setBusy(false);
+    reviewButton.textContent = "Review PR";
     activeController = null;
   }
 });
