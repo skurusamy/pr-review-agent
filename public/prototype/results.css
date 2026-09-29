@@ -1,0 +1,30 @@
+/* PROTOTYPE -- throwaway styles for public/prototype/results.js */
+#proto-results { max-width: 900px; margin: 1.5rem auto 5rem; padding: 0 1rem; font-family: var(--font-sans); color: var(--text); }
+#proto-bar { position: fixed; bottom: 1rem; left: 50%; transform: translateX(-50%); display: flex; gap: .75rem; align-items: center; background: #111; color: #fff; padding: .4rem .9rem; border-radius: 999px; box-shadow: 0 4px 14px rgba(0,0,0,.4); z-index: 10; }
+#proto-bar button { background: transparent; color: #fff; border: 0; padding: .2rem .6rem; font-size: 1rem; }
+.pr-tabs { display: flex; gap: .25rem; border-bottom: 1px solid var(--border); margin-bottom: 1rem; }
+.pr-tabs button { border: 0; border-radius: 0; background: none; padding: .5rem 1rem; }
+.pr-tabs button.on { border-bottom: 2px solid var(--accent); font-weight: 600; }
+.pr-banner { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: .5rem .75rem; margin-bottom: .75rem; color: var(--text-muted); }
+.pr-summary { margin-bottom: 1rem; font-weight: 600; }
+.pr-card, .pr-detail { border: 1px solid var(--border); border-radius: var(--radius); padding: .9rem 1rem; margin-bottom: .9rem; background: var(--bg); }
+.pr-card header, .pr-detail header, .pr-line summary { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; margin-bottom: .5rem; }
+.pr-badge { font-size: .72rem; font-weight: 700; padding: .1rem .5rem; border-radius: 999px; border: 1px solid currentColor; }
+.pr-danger { color: var(--danger); } .pr-success { color: var(--success); } .pr-warn { color: var(--warning); } .pr-info { color: var(--accent); } .pr-muted { color: var(--text-muted); }
+.pr-quote { margin: .5rem 0; padding: .4rem .8rem; border-left: 3px solid var(--border-strong); color: var(--text-muted); }
+.pr-sub { color: var(--text-muted); font-size: .85rem; margin: .6rem 0 .3rem; }
+.pr-draft { background: var(--surface); border: 1px dashed var(--border-strong); border-radius: var(--radius); padding: .6rem .8rem; }
+.pr-diff { background: var(--code-bg); padding: .5rem; border-radius: var(--radius); overflow-x: auto; font: .8rem var(--font-mono); }
+.pr-diff .add { color: var(--success); } .pr-diff .del { color: var(--danger); }
+.pr-reasoning { margin-top: .6rem; } .pr-reasoning summary { cursor: pointer; color: var(--accent); }
+.pr-log { background: var(--log-bg); color: var(--log-text); padding: .6rem; border-radius: var(--radius); font: .8rem var(--font-mono); margin-top: .4rem; }
+.pr-split { display: grid; grid-template-columns: 230px 1fr; gap: 1rem; align-items: start; }
+.pr-list { display: flex; flex-direction: column; gap: .25rem; }
+.pr-row { display: flex; align-items: center; gap: .5rem; text-align: left; padding: .5rem .6rem; }
+.pr-row.sel { border-color: var(--accent); background: var(--surface); }
+.pr-dot { width: .6rem; height: .6rem; border-radius: 50%; background: currentColor; display: inline-block; }
+.pr-group h3 { margin: 1.25rem 0 .5rem; font-size: .95rem; }
+.pr-line { border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: .4rem; padding: .3rem .8rem; }
+.pr-line summary { cursor: pointer; margin: 0; padding: .3rem 0; }
+.pr-oneliner { color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
+.pr-inner { padding: .3rem 0 .6rem; }
