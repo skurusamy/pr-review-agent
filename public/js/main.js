@@ -1,6 +1,13 @@
 import { streamRequest, isAbortError } from "./stream.js";
 import { appendLine, showError, clearLog } from "./logView.js";
 import {
+  startRun,
+  applyReviewEvent,
+  finishRun,
+  resetResults,
+  isActive,
+} from "./resultsView.js";
+import {
   clearBriefing,
   showBriefing,
   initBriefingActions,
@@ -24,6 +31,7 @@ let activeController = null;
 function resetPanels() {
   clearLog();
   clearBriefing();
+  resetResults();
 }
 
 function setBusy(busy) {
@@ -46,17 +54,23 @@ form.addEventListener("submit", async (event) => {
       { prUrl: prUrlInput.value, dryRun: dryRunInput.checked },
       appendLine,
       controller.signal,
+      { onRun: startRun, onEvent: applyReviewEvent },
     );
+    finishRun("completed");
     // Aborting mid-stream doesn't always reject the pending read (some
     // browsers just resolve it as a clean stream end) -- checking the
     // signal here is what catches that case instead of the request
     // silently looking like it finished normally.
     if (controller.signal.aborted) {
       appendLine("warn", "Stopped.");
+      finishRun("stopped");
     }
   } catch (err) {
     if (isAbortError(err) || controller.signal.aborted) {
       appendLine("warn", "Stopped.");
+      finishRun("stopped");
+    } else if (isActive()) {
+      finishRun("failed", err instanceof Error ? err.message : String(err));
     } else {
       showError(err);
     }
