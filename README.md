@@ -40,11 +40,18 @@ Nothing is written to GitHub unless you ask for it explicitly.
 
 `--dry-run` (CLI) / the UI's "Dry run" checkbox does everything for real, including edits and the Validation Gate, except the final `git push` and the GitHub writes, which are only printed. The UI also saves what the dry run found (Verdicts, patches, drafted replies).
 
-If the results look right, click **Apply this run** in the results view. It replays those saved results without calling the model again: it applies the recorded patches to a fresh checkout, re-runs the Validation Gate on the result, pushes, posts the fix confirmations and creates one pending review with the draft replies. Every item is checked against its Agent Marker first, so nothing is posted twice, and a retry picks up where a failure left off. If a patch no longer applies because the PR moved, nothing is pushed and you re-run Fix comments.
+If the results look right, click **Apply this run** in the results view. It replays those saved results without calling the model again: it applies the recorded patches to a fresh checkout, re-runs the Validation Gate on the result, pushes, posts the fix confirmations and creates one pending review with the draft replies. Every item is checked against its Agent Marker first, so nothing is posted twice, and a retry picks up where a failure left off. Only a dry run that completed can be applied, and only once it has succeeded. If a patch no longer applies because the PR moved, nothing is pushed (the draft replies are still created, since they never touch code) and you re-run Fix comments.
 
-Apply is only available while that run's results are on screen: reloading the page loses the way back to it. (The run itself stays saved under `data/runs`, but the UI has no list to reopen it from.)
+Apply is only available while that run's results are on screen: reloading the page loses the way back to it. The run itself stays saved under `data/runs`, but the UI has no list to reopen it from.
 
 See [CONTEXT.md](./CONTEXT.md) for the project's vocabulary, the [wayfinder map](https://github.com/skurusamy/pr-review-agent/issues/1) for how this is being built, and the [Agent Blueprint](https://claude.ai/artifact/RjzLkJ3ys8nY3Uken1woEw) for an interactive walkthrough of the tools, the Claude Agent SDK harness, and the step-by-step flow.
+
+## Limits
+
+- **Same-repo PRs only** for Review PR, Fix comments and Apply. They check out the PR's branch, and a PR from a fork is refused with a clear error. Brief PR needs no checkout, so it works on forks.
+- **Fix comments** only handles inline review comments on the diff, not the PR's top-level conversation. A comment gets up to 3 Fix Attempts before falling back to a draft reply.
+- **The Validation Gate** runs the target repo's own `typecheck`, `lint` and `test` npm scripts, in that order, and stops at the first failure. A script the repo doesn't define is skipped. It assumes npm.
+- **Untrusted PRs.** The Review PR session is locked down: only Read, Grep and Glob, no settings loaded from the checkout, and no GitHub token in its environment or checkout. The Brief PR, Verdict and Fix Attempt sessions are not locked down the same way yet (they list allowed tools but do not remove the others), so run the agent against PRs you would be willing to run code from until that is fixed. It is tracked on the wayfinder map.
 
 ## Development
 
@@ -67,7 +74,7 @@ Copy `.env.example` to `.env` and fill in `ANTHROPIC_API_KEY` and `GITHUB_TOKEN`
 | `RUNS_MAX`          | no       | `200`       | How many saved runs to keep; the oldest are pruned.                                         |
 | `NO_COLOR`          | no       |             | Set to disable CLI colors.                                                                  |
 
-Saved runs exist for the Apply step above; they are not a history you can browse.
+Saved runs exist for the Apply step above; they are not a history you can browse. Only runs started from the web UI are saved (Fix comments and Brief PR); CLI runs and Code Reviews are not. When the server starts, any run still marked as running is marked stopped.
 
 ## Logs
 
