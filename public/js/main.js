@@ -84,6 +84,7 @@ form.addEventListener("submit", async (event) => {
 });
 
 briefButton.addEventListener("click", async () => {
+  if (!form.reportValidity()) return;
   resetPanels();
   startBriefing();
   setBusy(true);
@@ -117,6 +118,7 @@ briefButton.addEventListener("click", async () => {
 });
 
 reviewButton.addEventListener("click", async () => {
+  if (!form.reportValidity()) return;
   resetPanels();
   startCodeReview();
   setBusy(true);
