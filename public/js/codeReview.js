@@ -3,7 +3,8 @@ import { h, inline, downloadMarkdown } from "./dom.js";
 
 const box = document.getElementById("code-review");
 
-// The one Code Review currently on screen -- what "Download .md" acts on.
+// The one Code Review currently on screen -- what "Download .md" acts on
+// ("Post to GitHub" acts on the structured review the panel was rendered from).
 // Starting any other run clears it.
 let current = null;
 
@@ -76,7 +77,11 @@ function section(title, ...kids) {
   return h("section", "bf-section", h("h3", "", title), kids);
 }
 
-function actions(parts) {
+function actions(parts, data) {
+  const { prUrl, headSha, review } = data;
+  const box = h("div", "bf-actions");
+  const status = h("span", "bf-status");
+
   const download = h("button", "secondary", "Download .md");
   download.type = "button";
   download.addEventListener("click", () => {
@@ -88,10 +93,77 @@ function actions(parts) {
       current.markdown,
     );
   });
-  return h("div", "bf-actions", download);
+
+  // Posting writes to the PR, so it takes a second, explicit click. What it
+  // creates is a PENDING review: private to you until you submit it on GitHub.
+  // The PR comes from the review itself, not the page's input, which may have
+  // been edited since it was generated.
+  const post = h("button", "secondary", "Post to GitHub");
+  post.type = "button";
+  post.disabled = !parts || !headSha;
+  const idle = (withPost = true) => {
+    box.replaceChildren(download, ...(withPost ? [post] : []), status);
+  };
+
+  post.addEventListener("click", () => {
+    const confirm = h("button", "", "Create pending review");
+    confirm.type = "button";
+    const cancel = h("button", "secondary", "Cancel");
+    cancel.type = "button";
+    cancel.addEventListener("click", () => {
+      status.textContent = "";
+      idle();
+    });
+    confirm.addEventListener("click", async () => {
+      confirm.disabled = cancel.disabled = true;
+      status.textContent = "Creating...";
+      try {
+        const response = await fetch("/review/post", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            prUrl,
+            headSha,
+            review: {
+              assessment: review.assessment,
+              findings: review.findings,
+              unanchored: review.unanchored,
+              skippedFiles: review.skippedFiles,
+            },
+          }),
+        });
+        const result = await response.json();
+        if (!response.ok) {
+          throw new Error(
+            result.error ?? `Request failed (${response.status})`,
+          );
+        }
+        const link = h("a", "", "Open the PR on GitHub");
+        link.href = result.url;
+        link.target = "_blank";
+        link.rel = "noopener";
+        status.replaceChildren(
+          `Created a pending review with ${result.commentCount} comment(s). Submit it on GitHub when ready: `,
+          link,
+        );
+        // A second click would only be refused (one pending review per PR).
+        idle(false);
+      } catch (err) {
+        status.textContent = err instanceof Error ? err.message : String(err);
+        idle();
+      }
+    });
+    const n = review.findings.length;
+    status.textContent = `Create a pending review on ${parts.owner}/${parts.repo}#${parts.number} with ${n} inline comment(s)? It stays private until you submit it on GitHub.`;
+    box.replaceChildren(status, confirm, cancel);
+  });
+
+  idle();
+  return box;
 }
 
-function render({ title, prUrl, review }) {
+function render(data) {
+  const { title, prUrl, review } = data;
   const parts = prParts(prUrl);
 
   const heading = h("h2", "");
@@ -116,7 +188,7 @@ function render({ title, prUrl, review }) {
       parts &&
         h("span", "bf-sub", `${parts.owner}/${parts.repo}#${parts.number}`),
     ),
-    actions(parts),
+    actions(parts, data),
   );
 
   box.textContent = "";

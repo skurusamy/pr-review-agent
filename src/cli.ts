@@ -5,6 +5,7 @@ import { loadSecrets } from "./secrets.js";
 import { runFix } from "./fixRun.js";
 import { runBrief } from "./briefRun.js";
 import { runCodeReview } from "./codeReviewRun.js";
+import { postCodeReviewAsPending } from "./codeReview/postReview.js";
 import { createOctokit } from "./github/client.js";
 import { postBriefingComment } from "./briefing/postBriefingComment.js";
 import { colorizeLine } from "./cliLog.js";
@@ -32,7 +33,7 @@ async function main(): Promise<void> {
   }
 
   if (args.command === "review") {
-    const { markdown } = await runCodeReview({
+    const { markdown, review, headSha } = await runCodeReview({
       owner: args.owner,
       repo: args.repo,
       prNumber: args.prNumber,
@@ -46,6 +47,24 @@ async function main(): Promise<void> {
     const fileName = `code-review-${args.owner}-${args.repo}-${args.prNumber}.md`;
     await writeFile(fileName, markdown, "utf-8");
     log(`\nWrote ${fileName}`);
+
+    if (args.post) {
+      // A separate, explicit step, like brief's --post. What it creates is a
+      // PENDING review: private to you until you submit it on GitHub.
+      const result = await postCodeReviewAsPending(
+        createOctokit(githubToken),
+        args.owner,
+        args.repo,
+        args.prNumber,
+        review,
+        headSha,
+      );
+      log(
+        result.created
+          ? `Created a pending review (id ${result.reviewId}) with ${result.commentCount} comment(s): ${result.url}\nSubmit it on GitHub when ready.`
+          : "Could not create a pending review: one already exists. Submit or dismiss it on GitHub first.",
+      );
+    }
     return;
   }
 

@@ -1,0 +1,134 @@
+import type { Octokit } from "octokit";
+import { z } from "zod";
+import {
+  findOwnPendingReview,
+  getAuthenticatedLogin,
+} from "../draft/draftReply.js";
+import {
+  findingSchema,
+  type CodeReview,
+  type Finding,
+} from "./generateReview.js";
+
+/**
+ * The part of a Code Review that posting needs. Also the shape the server
+ * accepts back from the browser: a review makes a round trip through the UI,
+ * so it is validated on the way in rather than trusted.
+ */
+export const postableReviewSchema = z.object({
+  assessment: z.string(),
+  findings: z.array(findingSchema),
+  unanchored: z.array(findingSchema),
+  skippedFiles: z.array(
+    z.object({ path: z.string(), reason: z.enum(["lockfile", "too-large"]) }),
+  ),
+});
+
+export type PostableReview = Pick<
+  CodeReview,
+  "assessment" | "findings" | "unanchored" | "skippedFiles"
+>;
+
+export type PostReviewResult =
+  | { created: true; reviewId: number; url: string; commentCount: number }
+  | { created: false; reason: "pending-review-exists" };
+
+const DRAFT_NOTE =
+  "_Draft from pr-review-agent's Code Review. Edit or delete anything before you submit it._";
+
+function formatFindingHeading(f: Finding): string {
+  return `**[${f.severity.toUpperCase()}] ${f.title}** · ${f.category}`;
+}
+
+/** One inline comment per anchored Finding. */
+export function buildReviewComments(
+  findings: Finding[],
+): { path: string; line: number; side: "RIGHT"; body: string }[] {
+  return findings.map((f) => ({
+    path: f.path,
+    line: f.line,
+    // Anchors are new-side lines (added or unchanged), never deletions.
+    side: "RIGHT" as const,
+    body: `${formatFindingHeading(f)}\n\n${f.explanation}`,
+  }));
+}
+
+/**
+ * The review's own body: the assessment, plus everything that could not go
+ * inline (Findings off the diff, files the model wasn't shown). Nothing the
+ * Code Review concluded is left out of what gets posted.
+ */
+export function buildReviewBody(review: PostableReview): string {
+  const parts = [DRAFT_NOTE, `## Assessment\n\n${review.assessment}`];
+
+  if (review.unanchored.length > 0) {
+    const items = review.unanchored
+      .map(
+        (f) =>
+          `- ${formatFindingHeading(f)} (\`${f.path}:${f.line}\`)\n\n  ${f.explanation.replace(/\n/g, "\n  ")}`,
+      )
+      .join("\n\n");
+    parts.push(
+      `## Findings not anchored to the diff\n\nThese name a line that is not part of the diff, so they are here rather than inline.\n\n${items}`,
+    );
+  }
+
+  if (review.skippedFiles.length > 0) {
+    const items = review.skippedFiles
+      .map((s) => `- \`${s.path}\` (${s.reason})`)
+      .join("\n");
+    parts.push(`## Not reviewed\n\n${items}`);
+  }
+
+  return parts.join("\n\n");
+}
+
+/**
+ * Posts a Code Review as ONE pending review: the assessment as its body and
+ * each anchored Finding as an inline comment. Pending means it is visible only
+ * to its author and nothing reaches the PR until they submit it themselves on
+ * GitHub -- so this never approves, requests changes, or notifies anyone (no
+ * `event` is passed, which is what keeps it pending).
+ *
+ * Comments are pinned to `headSha`, the commit the review was made against,
+ * so a push landing since then can't slide them onto other lines.
+ *
+ * GitHub allows one pending review per user per PR (Draft Replies use the
+ * same slot); if one exists this refuses instead of failing with a raw 422.
+ */
+export async function postCodeReviewAsPending(
+  octokit: Octokit,
+  owner: string,
+  repo: string,
+  prNumber: number,
+  review: PostableReview,
+  headSha: string,
+): Promise<PostReviewResult> {
+  const ownLogin = await getAuthenticatedLogin(octokit);
+  const existing = await findOwnPendingReview(
+    octokit,
+    owner,
+    repo,
+    prNumber,
+    ownLogin,
+  );
+  if (existing) {
+    return { created: false, reason: "pending-review-exists" };
+  }
+
+  const comments = buildReviewComments(review.findings);
+  const { data } = await octokit.rest.pulls.createReview({
+    owner,
+    repo,
+    pull_number: prNumber,
+    commit_id: headSha,
+    body: buildReviewBody(review),
+    comments,
+  });
+  return {
+    created: true,
+    reviewId: data.id,
+    url: data.html_url,
+    commentCount: comments.length,
+  };
+}

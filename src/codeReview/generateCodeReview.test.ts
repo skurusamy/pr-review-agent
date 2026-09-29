@@ -28,6 +28,7 @@ const context: PrContext = {
   description: "D",
   comments: [],
   diff: DIFF,
+  headSha: "abc1234",
 };
 
 const maxTurns = () =>

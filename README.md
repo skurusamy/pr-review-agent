@@ -2,11 +2,11 @@
 
 An agent that helps with a pull request in three ways. Each is its own action, on the CLI and as a button in the local web UI:
 
-| Action           | CLI                                        | What it does                                                                                                                                                         |
-| ---------------- | ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Brief PR**     | `brief <owner/repo> <pr-number> [--post]`  | Read-only summary of what the PR does, with a changed-files tree, a diagram, and things to double-check. `--post` adds it as a PR comment.                           |
-| **Review PR**    | `review <owner/repo> <pr-number>`          | Reviews the PR's code (bugs, security, missing tests, drift from the description) and reports **Findings** with a file and line. Never approves or requests changes. |
-| **Fix comments** | `fix <owner/repo> <pr-number> [--dry-run]` | Triages review comments others left: applies a locally-validated fix for real bugs, drafts a reply for the rest.                                                     |
+| Action           | CLI                                        | What it does                                                                                                                                                                                                                                                             |
+| ---------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Brief PR**     | `brief <owner/repo> <pr-number> [--post]`  | Read-only summary of what the PR does, with a changed-files tree, a diagram, and things to double-check. `--post` adds it as a PR comment.                                                                                                                               |
+| **Review PR**    | `review <owner/repo> <pr-number> [--post]` | Reviews the PR's code (bugs, security, missing tests, drift from the description) and reports **Findings** with a file and line. Never approves or requests changes. `--post` creates a **pending** review with the Findings as inline comments; you submit it yourself. |
+| **Fix comments** | `fix <owner/repo> <pr-number> [--dry-run]` | Triages review comments others left: applies a locally-validated fix for real bugs, drafts a reply for the rest.                                                                                                                                                         |
 
 Run any of them with, for example:
 

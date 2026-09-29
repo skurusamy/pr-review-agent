@@ -13,8 +13,15 @@ import {
   vi,
 } from "vitest";
 import { runCodeReview } from "./codeReviewRun.js";
+import { postCodeReviewAsPending } from "./codeReview/postReview.js";
 
 vi.mock("./codeReviewRun.js", () => ({ runCodeReview: vi.fn() }));
+// The request schema stays real (it is what /review/post validates with);
+// only the GitHub write is faked.
+vi.mock("./codeReview/postReview.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./codeReview/postReview.js")>()),
+  postCodeReviewAsPending: vi.fn(),
+}));
 
 let server: Server;
 let base: string;
@@ -41,6 +48,7 @@ afterAll(async () => {
 // hook, and mockReset() returns the mock itself.
 beforeEach(() => {
   vi.mocked(runCodeReview).mockReset();
+  vi.mocked(postCodeReviewAsPending).mockReset();
 });
 
 async function post(body: unknown): Promise<Response> {
@@ -73,7 +81,13 @@ describe("POST /review", () => {
     vi.mocked(runCodeReview).mockImplementation(async ({ log }) => {
       log?.("Fetching PR context for acme/widgets#7...");
       log?.("  [thinking] looking at it");
-      return { title: "My PR", prUrl: PR, review, markdown: "# Code Review" };
+      return {
+        title: "My PR",
+        prUrl: PR,
+        headSha: "abc1234",
+        review,
+        markdown: "# Code Review",
+      };
     });
 
     const response = await post({ prUrl: PR });
@@ -83,7 +97,10 @@ describe("POST /review", () => {
     expect(await lines(response)).toEqual([
       { kind: "info", text: "Fetching PR context for acme/widgets#7..." },
       { kind: "thinking", text: "[thinking] looking at it" },
-      { kind: "data", data: { title: "My PR", prUrl: PR, review } },
+      {
+        kind: "data",
+        data: { title: "My PR", prUrl: PR, headSha: "abc1234", review },
+      },
       { kind: "result", text: "# Code Review" },
       { kind: "done", text: "" },
     ]);
@@ -93,6 +110,7 @@ describe("POST /review", () => {
     vi.mocked(runCodeReview).mockResolvedValue({
       title: "t",
       prUrl: PR,
+      headSha: "abc1234",
       review,
       markdown: "m",
     });
@@ -141,5 +159,107 @@ describe("POST /review", () => {
     // going away (what the browser's Stop button does).
     await response.body?.cancel();
     await vi.waitFor(() => expect(seen?.aborted).toBe(true));
+  });
+});
+
+describe("POST /review/post", () => {
+  const finding = {
+    path: "src/page.ts",
+    line: 11,
+    severity: "high",
+    category: "correctness",
+    title: "Bug",
+    explanation: "Because.",
+  };
+  const payload = {
+    prUrl: PR,
+    headSha: "abc1234",
+    review: {
+      assessment: "Fine.",
+      findings: [finding],
+      unanchored: [],
+      skippedFiles: [],
+    },
+  };
+  const postReview = (body: unknown) =>
+    fetch(`${base}/review/post`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+  it("creates a pending review and returns its link", async () => {
+    vi.mocked(postCodeReviewAsPending).mockResolvedValue({
+      created: true,
+      reviewId: 99,
+      url: "https://github.com/acme/widgets/pull/7#pullrequestreview-99",
+      commentCount: 1,
+    });
+
+    const response = await postReview(payload);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      url: "https://github.com/acme/widgets/pull/7#pullrequestreview-99",
+      reviewId: 99,
+      commentCount: 1,
+    });
+
+    const args = vi.mocked(postCodeReviewAsPending).mock.calls[0]!;
+    expect(args.slice(1)).toEqual([
+      "acme",
+      "widgets",
+      7,
+      payload.review,
+      "abc1234",
+    ]);
+  });
+
+  it("answers 409 when the user already has a pending review", async () => {
+    vi.mocked(postCodeReviewAsPending).mockResolvedValue({
+      created: false,
+      reason: "pending-review-exists",
+    });
+    const response = await postReview(payload);
+    expect(response.status).toBe(409);
+    expect(((await response.json()) as { error: string }).error).toMatch(
+      /pending review/,
+    );
+  });
+
+  it("rejects a malformed review with 400 and never touches GitHub", async () => {
+    const bad = await postReview({
+      ...payload,
+      review: {
+        ...payload.review,
+        findings: [{ ...finding, severity: "critical" }],
+      },
+    });
+    expect(bad.status).toBe(400);
+    expect(((await bad.json()) as { error: string }).error).toMatch(
+      /Invalid review/,
+    );
+
+    expect(
+      (await postReview({ ...payload, headSha: "not a sha" })).status,
+    ).toBe(400);
+    expect((await postReview({ prUrl: PR })).status).toBe(400);
+    expect(postCodeReviewAsPending).not.toHaveBeenCalled();
+  });
+
+  it("rejects a bad PR link with 400", async () => {
+    const response = await postReview({ ...payload, prUrl: "nope" });
+    expect(response.status).toBe(400);
+    expect(postCodeReviewAsPending).not.toHaveBeenCalled();
+  });
+
+  it("reports a GitHub failure as 500 with the message", async () => {
+    vi.mocked(postCodeReviewAsPending).mockRejectedValue(
+      new Error("Validation Failed"),
+    );
+    const response = await postReview(payload);
+    expect(response.status).toBe(500);
+    expect(((await response.json()) as { error: string }).error).toContain(
+      "Validation Failed",
+    );
   });
 });

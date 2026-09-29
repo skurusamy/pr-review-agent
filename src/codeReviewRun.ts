@@ -22,6 +22,8 @@ export interface CodeReviewRunOptions {
 export interface CodeReviewResult {
   title: string;
   prUrl: string;
+  /** The commit the review was made against; posting pins its comments to it. */
+  headSha: string;
   review: CodeReview;
   markdown: string;
 }
@@ -90,6 +92,7 @@ export async function runCodeReview(
     return {
       title: context.title,
       prUrl,
+      headSha: context.headSha,
       review,
       markdown: formatCodeReviewMarkdown(context.title, prUrl, review),
     };

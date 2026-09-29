@@ -8,6 +8,7 @@ function makeContext(overrides: Partial<PrContext> = {}): PrContext {
     description: "Adjusts the loop bound so the last page isn't dropped.",
     comments: [],
     diff: "diff --git a/src/page.ts b/src/page.ts\n+const x = 1;\n",
+    headSha: "abc1234",
     ...overrides,
   };
 }

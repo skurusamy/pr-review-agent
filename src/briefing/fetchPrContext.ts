@@ -10,6 +10,12 @@ export interface PrContext {
   description: string | null;
   comments: PrComment[];
   diff: string;
+  /**
+   * The PR's head commit when this was fetched. Inline review comments are
+   * pinned to it, so a push that lands between a review and its posting
+   * can't shift them onto the wrong lines.
+   */
+  headSha: string;
 }
 
 /**
@@ -64,5 +70,6 @@ export async function fetchPrContext(
       body: c.body ?? "",
     })),
     diff,
+    headSha: pr.head.sha,
   };
 }

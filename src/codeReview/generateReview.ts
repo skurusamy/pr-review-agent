@@ -70,7 +70,7 @@ const MAX_TURNS = 24;
 
 export const READ_ONLY_TOOLS = ["Read", "Grep", "Glob"] as const;
 
-const findingSchema = z.object({
+export const findingSchema = z.object({
   path: z
     .string()
     .describe(

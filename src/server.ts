@@ -6,7 +6,12 @@ import { loadSecrets } from "./secrets.js";
 import { parsePrUrl } from "./prUrl.js";
 import { runFix } from "./fixRun.js";
 import { runBrief } from "./briefRun.js";
+import { z } from "zod";
 import { runCodeReview } from "./codeReviewRun.js";
+import {
+  postableReviewSchema,
+  postCodeReviewAsPending,
+} from "./codeReview/postReview.js";
 import { createOctokit } from "./github/client.js";
 import { postBriefingComment } from "./briefing/postBriefingComment.js";
 import { classifyLogLine } from "./logFormat.js";
@@ -305,6 +310,7 @@ app.post("/review", async (req, res) => {
       data: {
         title: result.title,
         prUrl: result.prUrl,
+        headSha: result.headSha,
         review: result.review,
       },
     });
@@ -320,6 +326,61 @@ app.post("/review", async (req, res) => {
     }
   } finally {
     res.end();
+  }
+});
+
+const postReviewRequestSchema = z.object({
+  prUrl: z.string(),
+  headSha: z.string().regex(/^[0-9a-f]{7,40}$/i),
+  review: postableReviewSchema,
+});
+
+// Posting a Code Review is a separate, explicit step from generating it. It
+// creates a PENDING review (private to you until you submit it on GitHub),
+// never a submitted one. The review comes back from the browser, so its
+// shape is validated here rather than trusted.
+app.post("/review/post", async (req, res) => {
+  const parsed = postReviewRequestSchema.safeParse(req.body);
+  if (!parsed.success) {
+    const problems = parsed.error.issues
+      .slice(0, 3)
+      .map((i) => `${i.path.join(".") || "body"}: ${i.message}`)
+      .join("; ");
+    res.status(400).json({ error: `Invalid review to post (${problems}).` });
+    return;
+  }
+
+  let reference;
+  try {
+    reference = parsePrUrl(parsed.data.prUrl);
+  } catch (error) {
+    res.status(400).json({ error: formatError(error) });
+    return;
+  }
+
+  try {
+    const result = await postCodeReviewAsPending(
+      createOctokit(secrets.githubToken),
+      reference.owner,
+      reference.repo,
+      reference.prNumber,
+      parsed.data.review,
+      parsed.data.headSha,
+    );
+    if (!result.created) {
+      res.status(409).json({
+        error:
+          "You already have a pending review on this PR. Submit or dismiss it on GitHub first.",
+      });
+      return;
+    }
+    res.json({
+      url: result.url,
+      reviewId: result.reviewId,
+      commentCount: result.commentCount,
+    });
+  } catch (error) {
+    res.status(500).json({ error: formatError(error) });
   }
 });
 

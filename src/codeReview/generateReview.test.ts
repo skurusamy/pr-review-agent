@@ -15,6 +15,7 @@ function makeContext(overrides: Partial<PrContext> = {}): PrContext {
     description: "Adjusts the loop bound so the last page isn't dropped.",
     comments: [],
     diff: "",
+    headSha: "abc1234",
     ...overrides,
   };
 }

@@ -58,7 +58,7 @@ export function buildDraftReply(
   return { rootCommentId: rootComment.id, path: rootComment.path, line, body };
 }
 
-async function getAuthenticatedLogin(octokit: Octokit): Promise<string> {
+export async function getAuthenticatedLogin(octokit: Octokit): Promise<string> {
   const { data } = await octokit.rest.users.getAuthenticated();
   return data.login;
 }
@@ -71,7 +71,7 @@ interface PendingReview {
 // createReview call while one exists is a hard 422. So every draft-review
 // operation has to check for one first, scoped to OUR OWN account (a human
 // reviewer's own in-progress pending review is none of our business).
-async function findOwnPendingReview(
+export async function findOwnPendingReview(
   octokit: Octokit,
   owner: string,
   repo: string,

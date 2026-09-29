@@ -56,7 +56,13 @@ describe("parseArgs", () => {
       owner: "skurusamy",
       repo: "pr-review-agent",
       prNumber: 10,
+      post: false,
     });
+  });
+
+  it("parses --post on a review command", () => {
+    const args = parseArgs(["review", "a/b", "3", "--post"]);
+    expect(args.command === "review" && args.post).toBe(true);
   });
 
   it("rejects a review command with a bad owner/repo or PR number", () => {
