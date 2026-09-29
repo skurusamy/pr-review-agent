@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildBriefingPrompt } from "./generateBriefing.js";
+import { buildBriefingPrompt, parseBriefingInput } from "./generateBriefing.js";
 import type { PrContext } from "./fetchPrContext.js";
 
 function makeContext(overrides: Partial<PrContext> = {}): PrContext {
@@ -12,6 +12,32 @@ function makeContext(overrides: Partial<PrContext> = {}): PrContext {
     ...overrides,
   };
 }
+
+describe("parseBriefingInput", () => {
+  const good = {
+    summary: "Adds a helper.",
+    mermaidDiagram: "flowchart LR\n  A --> B",
+    risks: [],
+  };
+
+  it("accepts a complete submission", () => {
+    expect(parseBriefingInput(good)).toEqual(good);
+  });
+
+  it("rejects a submission with no diagram, so it can't reach the page as 'undefined'", () => {
+    expect(parseBriefingInput({ ...good, mermaidDiagram: undefined })).toBe(
+      undefined,
+    );
+    expect(parseBriefingInput({ ...good, mermaidDiagram: "   " })).toBe(
+      undefined,
+    );
+  });
+
+  it("rejects a missing summary or risks list", () => {
+    expect(parseBriefingInput({ ...good, summary: "" })).toBe(undefined);
+    expect(parseBriefingInput({ ...good, risks: undefined })).toBe(undefined);
+  });
+});
 
 describe("buildBriefingPrompt", () => {
   it("includes the PR title and description", () => {

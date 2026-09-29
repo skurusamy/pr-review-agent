@@ -9,6 +9,9 @@ const darkQuery = window.matchMedia("(prefers-color-scheme: dark)");
 function initMermaid() {
   mermaid.initialize({
     startOnLoad: false,
+    // Mermaid draws its own "syntax error" graphic (a bomb) for a diagram it
+    // can't parse. We show the diagram's source instead (see diagramView).
+    suppressErrorRendering: true,
     theme: darkQuery.matches ? "dark" : "default",
   });
 }
@@ -87,6 +90,9 @@ function prParts(prUrl) {
 async function diagramView(source) {
   const box = h("div", "diagram");
   try {
+    // Parse first: render() paints Mermaid's error graphic into the page
+    // before it throws, so an invalid diagram must be rejected up front.
+    await mermaid.parse(source);
     const { svg } = await mermaid.render(
       `briefing-diagram-${++diagramCounter}`,
       source,
@@ -95,6 +101,7 @@ async function diagramView(source) {
   } catch {
     // The model produced something that isn't valid Mermaid -- show
     // its source instead of silently dropping the diagram.
+    document.getElementById(`dbriefing-diagram-${diagramCounter}`)?.remove();
     const pre = h("pre", "");
     pre.textContent = source;
     box.append(

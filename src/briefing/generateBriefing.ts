@@ -46,26 +46,45 @@ const MAX_TURNS = 4;
 // of the model -- only the parts that need real judgment go through this
 // tool, same "the tool call is the answer, never parsed from prose" rule as
 // submit_verdict/submit_fix.
+const briefingInputShape = {
+  summary: z
+    .string()
+    .min(1)
+    .describe(
+      "A concise prose summary of what this PR does and why. If the diff seems to drift from what the title/description claims, say so explicitly here.",
+    ),
+  mermaidDiagram: z
+    .string()
+    .trim()
+    .min(1)
+    .describe(
+      "A Mermaid diagram (flowchart or sequence, whichever fits) sketching the SHAPE of this change -- e.g. new or altered control flow -- not a literal file listing. Required: never omit it.",
+    ),
+  risks: z
+    .array(z.string())
+    .describe(
+      "Specific things a reviewer should double-check, ordered by importance. Empty array if genuinely nothing stands out.",
+    ),
+};
+const briefingInputSchema = z.object(briefingInputShape);
+
+/**
+ * The model's submit_briefing arguments, or undefined if they are malformed.
+ * The stream shows them before the SDK has validated them against the tool's
+ * schema, and an unchecked cast let a call with no diagram through as the
+ * text "undefined", which the page then drew as a Mermaid syntax-error bomb.
+ */
+export function parseBriefingInput(
+  raw: unknown,
+): z.infer<typeof briefingInputSchema> | undefined {
+  const parsed = briefingInputSchema.safeParse(raw);
+  return parsed.success ? parsed.data : undefined;
+}
+
 const submitBriefingTool = tool(
   "submit_briefing",
   "Report your briefing on this pull request for a human reviewer.",
-  {
-    summary: z
-      .string()
-      .describe(
-        "A concise prose summary of what this PR does and why. If the diff seems to drift from what the title/description claims, say so explicitly here.",
-      ),
-    mermaidDiagram: z
-      .string()
-      .describe(
-        "A Mermaid diagram (flowchart or sequence, whichever fits) sketching the SHAPE of this change -- e.g. new or altered control flow -- not a literal file listing.",
-      ),
-    risks: z
-      .array(z.string())
-      .describe(
-        "Specific things a reviewer should double-check, ordered by importance. Empty array if genuinely nothing stands out.",
-      ),
-  },
+  briefingInputShape,
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async (_input) => {
     return { content: [{ type: "text" as const, text: "Briefing recorded." }] };
@@ -169,11 +188,16 @@ export async function generateBriefing(
             continue;
           }
           if (block.name.endsWith("submit_briefing")) {
-            const input = block.input as {
-              summary: string;
-              mermaidDiagram: string;
-              risks: string[];
-            };
+            // On a malformed call keep looping: the SDK reports the
+            // validation error back to the model, which can resubmit
+            // within the turn budget.
+            const input = parseBriefingInput(block.input);
+            if (!input) {
+              log(
+                "Warning: submit_briefing had an invalid shape; waiting for a retry.",
+              );
+              continue;
+            }
             return {
               ...input,
               changedFiles,

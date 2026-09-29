@@ -19,11 +19,11 @@ export type CreatePendingReviewResult =
   // Only the dry-run ledger returns this: nothing was created, by design.
   | { created: false; reason: "dry-run" };
 
-// Embeds the specific root comment's id, not a generic tag. GitHub's API
-// gives us no way to create a reply that's both pending AND nested in the
-// original thread (see Learning Notes for why), so idempotency can't be
-// checked via reply structure at all -- it has to be checked by scanning
-// comment bodies for this exact string.
+// Embeds the specific root comment's id, not a generic tag. GitHub's REST API
+// cannot make a comment both pending AND a reply, so replies are added to the
+// pending review through GraphQL (see createPendingReview) -- but they are
+// still only visible to us by scanning comment bodies, so idempotency is
+// checked by looking for this exact string rather than by reply structure.
 export function marker(rootCommentId: number): string {
   return `<!-- pr-review-agent:comment-${rootCommentId} -->`;
 }
@@ -183,6 +183,56 @@ export async function postFixConfirmation(
   });
 }
 
+interface ReviewThreadsPage {
+  repository: {
+    pullRequest: {
+      reviewThreads: {
+        pageInfo: { hasNextPage: boolean; endCursor: string | null };
+        nodes: {
+          id: string;
+          comments: { nodes: { databaseId: number | null }[] };
+        }[];
+      };
+    };
+  };
+}
+
+/**
+ * Maps each review thread's root comment id (the REST id the rest of the
+ * agent uses) to the thread's GraphQL node id, which is what a reply needs.
+ */
+export async function findThreadNodeIds(
+  octokit: Octokit,
+  owner: string,
+  repo: string,
+  prNumber: number,
+): Promise<Map<number, string>> {
+  const ids = new Map<number, string>();
+  let after: string | null = null;
+  for (;;) {
+    const page: ReviewThreadsPage = await octokit.graphql(
+      `query($owner: String!, $repo: String!, $number: Int!, $after: String) {
+        repository(owner: $owner, name: $repo) {
+          pullRequest(number: $number) {
+            reviewThreads(first: 100, after: $after) {
+              pageInfo { hasNextPage endCursor }
+              nodes { id comments(first: 1) { nodes { databaseId } } }
+            }
+          }
+        }
+      }`,
+      { owner, repo, number: prNumber, after },
+    );
+    const threads = page.repository.pullRequest.reviewThreads;
+    for (const thread of threads.nodes) {
+      const rootId = thread.comments.nodes[0]?.databaseId;
+      if (rootId != null) ids.set(rootId, thread.id);
+    }
+    if (!threads.pageInfo.hasNextPage) return ids;
+    after = threads.pageInfo.endCursor;
+  }
+}
+
 /**
  * Creates ONE pending review holding every entry -- not one review per
  * comment, since only one pending review per user per PR is allowed at all.
@@ -190,6 +240,15 @@ export async function postFixConfirmation(
  * submitted or dismissed it yet), this refuses rather than erroring, so the
  * caller can surface a clear "submit or dismiss the existing review first"
  * message instead of a raw 422.
+ *
+ * Each entry is added as a reply inside its own review thread, so it reads as
+ * an answer to the comment it is about. REST's createReview can only add new
+ * line comments, so the review is created empty and the replies are added
+ * with GraphQL's addPullRequestReviewThreadReply, which accepts the pending
+ * review's id. An entry whose thread can't be found falls back to a line
+ * comment on the same path and line rather than being dropped. If adding a
+ * reply fails, the half-built pending review is deleted, so a retry is not
+ * blocked by one.
  */
 export async function createPendingReview(
   octokit: Octokit,
@@ -211,15 +270,52 @@ export async function createPendingReview(
     return { created: false, reason: "pending-review-exists" };
   }
 
+  const threadIds = await findThreadNodeIds(octokit, owner, repo, prNumber);
+  const replies = entries.filter((e) => threadIds.has(e.rootCommentId));
+  const lineComments = entries.filter((e) => !threadIds.has(e.rootCommentId));
+
   const { data } = await octokit.rest.pulls.createReview({
     owner,
     repo,
     pull_number: prNumber,
-    comments: entries.map((e) => ({
-      path: e.path,
-      line: e.line,
-      body: e.body,
-    })),
+    ...(lineComments.length > 0
+      ? {
+          comments: lineComments.map((e) => ({
+            path: e.path,
+            line: e.line,
+            body: e.body,
+          })),
+        }
+      : {}),
   });
+
+  try {
+    for (const entry of replies) {
+      await octokit.graphql(
+        `mutation($review: ID!, $thread: ID!, $body: String!) {
+          addPullRequestReviewThreadReply(input: {
+            pullRequestReviewId: $review,
+            pullRequestReviewThreadId: $thread,
+            body: $body
+          }) { comment { id } }
+        }`,
+        {
+          review: data.node_id,
+          thread: threadIds.get(entry.rootCommentId),
+          body: entry.body,
+        },
+      );
+    }
+  } catch (error) {
+    await octokit.rest.pulls
+      .deletePendingReview({
+        owner,
+        repo,
+        pull_number: prNumber,
+        review_id: data.id,
+      })
+      .catch(() => undefined);
+    throw error;
+  }
   return { created: true, reviewId: data.id };
 }

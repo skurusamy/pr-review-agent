@@ -8,7 +8,6 @@ import {
   isActive,
 } from "./resultsView.js";
 import { applyStep, resetActivity, startActivity } from "./activity.js";
-import { selectTab } from "./panelTabs.js";
 import { hidePrCard, showPrCard, showPrLoading } from "./prCard.js";
 import { clearBriefing, showBriefing, startBriefing } from "./briefing.js";
 import {
@@ -204,17 +203,5 @@ form.addEventListener("submit", async (event) => {
     showError(err);
   } finally {
     loadButton.disabled = false;
-  }
-});
-
-// "View details" opens the full log: the Raw log tab when a results view has
-// tabs up, otherwise the log panel itself.
-document.getElementById("details-button").addEventListener("click", () => {
-  const tabs = document.getElementById("results-tabs");
-  if (!tabs.hidden) {
-    selectTab("log");
-  } else {
-    const output = document.getElementById("output");
-    output.hidden = !output.hidden;
   }
 });

@@ -26,7 +26,7 @@ Opens at http://localhost:4127 (override with the `PORT` env var). The same logi
 
 1. **Paste a PR link and click Load PR.** A card shows the PR before anything runs: title, description, branch, author, age, comment count, files changed and additions/deletions (from `GET /pr?prUrl=…`, one GitHub call). Editing the link clears the card.
 2. **Pick a mode**: Brief PR, Review PR or Fix comments, then click the action button. The **Dry run** toggle only appears for Fix comments, since it is the only action that writes anything by default (Brief and Review are read-only).
-3. **Watch Agent activity.** A checklist shows each step as it starts and finishes, with how long it took (fetching the PR, checking out the branch, reviewing the code, one step per comment for Fix comments). **View details** opens the full Raw log.
+3. **Watch Agent activity.** A checklist shows each step as it starts and finishes, with how long it took (fetching the PR, checking out the branch, reviewing the code, one step per comment for Fix comments). The **Raw log** tab has the full detail.
 
 Each action has its own results view: **Brief PR** shows the briefing (summary, changed files, diagram, risks), **Review PR** shows the Findings as cards ordered by severity, and **Fix comments** shows one card per review comment with its Verdict and outcome. Every view has a **Raw log** tab with the full output.
 
@@ -34,11 +34,11 @@ Each action has its own results view: **Brief PR** shows the briefing (summary, 
 
 Nothing is written to GitHub unless you ask for it explicitly.
 
-| Action           | Writes by default                                                                                                 | Only when you ask                                                                                                                                                           |
-| ---------------- | ----------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Brief PR**     | nothing (a local `.md` file from the CLI)                                                                         | `--post` / "Post to GitHub": one top-level PR comment                                                                                                                       |
-| **Review PR**    | nothing (a local `.md` file from the CLI)                                                                         | `--post` / "Post to GitHub": one **pending** review with inline comments. It stays private to you until you submit it on GitHub, and it never approves or requests changes. |
-| **Fix comments** | commits pushed to the PR branch and a confirmation reply per fix; draft replies collected into one pending review | `--dry-run` (on by default in the UI): everything is computed, nothing is pushed or posted                                                                                  |
+| Action           | Writes by default                                                                                                                                     | Only when you ask                                                                                                                                                           |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Brief PR**     | nothing (a local `.md` file from the CLI)                                                                                                             | `--post` / "Post to GitHub": one top-level PR comment                                                                                                                       |
+| **Review PR**    | nothing (a local `.md` file from the CLI)                                                                                                             | `--post` / "Post to GitHub": one **pending** review with inline comments. It stays private to you until you submit it on GitHub, and it never approves or requests changes. |
+| **Fix comments** | commits pushed to the PR branch and a confirmation reply per fix; draft replies collected into one pending review, each inside its own comment thread | `--dry-run` (on by default in the UI): everything is computed, nothing is pushed or posted                                                                                  |
 
 ## Fix comments: dry run, then apply
 

@@ -21,7 +21,7 @@ Running the target repo's own `typecheck`, `lint` and `test` npm scripts against
 _Avoid_: CI rerun, checks, verification
 
 **Draft Reply**:
-A pending, unsubmitted GitHub review comment the agent creates at the same file and line as an original review comment — used for a `not-a-bug` verdict, and as the fallback when a `bug` verdict exhausts its Fix Attempts without passing the Validation Gate. GitHub allows only one pending review per PR, so every Draft Reply from one Fix Run lands in a single shared pending review, not a reply nested in the original comment's thread (GitHub's API has no way to make a comment both pending and a reply).
+A pending, unsubmitted reply the agent adds inside the original review comment's thread — used for a `not-a-bug` verdict, and as the fallback when a `bug` verdict exhausts its Fix Attempts without passing the Validation Gate. GitHub allows only one pending review per PR, so every Draft Reply from one Fix Run belongs to a single shared pending review; the replies are added to it through GitHub's GraphQL API, since the REST API cannot make a comment both pending and a reply. If a thread cannot be found, the Draft Reply falls back to a new comment on the same file and line.
 _Avoid_: pending comment, response, reply
 
 **Agent Marker**:

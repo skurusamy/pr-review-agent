@@ -1,5 +1,11 @@
-import { describe, expect, it } from "vitest";
-import { buildDraftReply, hasMarkerForComment } from "./draftReply.js";
+import { describe, expect, it, vi } from "vitest";
+import type { Octokit } from "octokit";
+import {
+  buildDraftReply,
+  createPendingReview,
+  hasMarkerForComment,
+  type DraftReplyEntry,
+} from "./draftReply.js";
 import type { ReviewThread } from "../github/types.js";
 import type { Verdict } from "../verdict/reachVerdict.js";
 
@@ -65,5 +71,141 @@ describe("buildDraftReply", () => {
       },
     );
     expect(entry.line).toBe(55);
+  });
+});
+
+describe("createPendingReview", () => {
+  const entry = (rootCommentId: number): DraftReplyEntry => ({
+    rootCommentId,
+    path: `src/f${rootCommentId}.ts`,
+    line: 3,
+    body: `reply ${rootCommentId}`,
+  });
+
+  /** A fake GitHub with `threads` (root comment id -> thread node id). */
+  function fakeOctokit(opts: {
+    threads: Record<number, string>;
+    pending?: boolean;
+    failReplyFor?: string;
+  }) {
+    const createReview = vi.fn(async () => ({
+      data: { id: 900, node_id: "PRR_node" },
+    }));
+    const deletePendingReview = vi.fn(async () => ({}));
+    const replies: { review: string; thread: string; body: string }[] = [];
+    const graphql = vi.fn(
+      async (query: string, vars: Record<string, unknown>) => {
+        if (query.includes("reviewThreads")) {
+          return {
+            repository: {
+              pullRequest: {
+                reviewThreads: {
+                  pageInfo: { hasNextPage: false, endCursor: null },
+                  nodes: Object.entries(opts.threads).map(([id, node]) => ({
+                    id: node,
+                    comments: { nodes: [{ databaseId: Number(id) }] },
+                  })),
+                },
+              },
+            },
+          };
+        }
+        if (vars.thread === opts.failReplyFor) throw new Error("boom");
+        replies.push({
+          review: vars.review as string,
+          thread: vars.thread as string,
+          body: vars.body as string,
+        });
+        return {};
+      },
+    );
+    const octokit = {
+      paginate: vi.fn(async () =>
+        opts.pending
+          ? [{ id: 5, state: "PENDING", user: { login: "me" } }]
+          : [],
+      ),
+      graphql,
+      rest: { pulls: { listReviews: {}, createReview, deletePendingReview } },
+    } as unknown as Octokit;
+    return { octokit, createReview, deletePendingReview, replies, graphql };
+  }
+
+  it("adds each draft as a reply inside its own review thread", async () => {
+    const f = fakeOctokit({ threads: { 1: "T1", 2: "T2" } });
+
+    const result = await createPendingReview(
+      f.octokit,
+      "o",
+      "r",
+      7,
+      [entry(1), entry(2)],
+      "me",
+    );
+
+    expect(result).toEqual({ created: true, reviewId: 900 });
+    expect(f.replies).toEqual([
+      { review: "PRR_node", thread: "T1", body: "reply 1" },
+      { review: "PRR_node", thread: "T2", body: "reply 2" },
+    ]);
+    // The review itself carries no line comments: those would be new
+    // comments beside the thread, not replies in it.
+    const call = f.createReview.mock.calls[0] as unknown as [
+      Record<string, unknown>,
+    ];
+    expect(call[0]).not.toHaveProperty("comments");
+    expect(call[0]).not.toHaveProperty("event");
+  });
+
+  it("falls back to a line comment when a thread can't be found", async () => {
+    const f = fakeOctokit({ threads: { 1: "T1" } });
+
+    await createPendingReview(
+      f.octokit,
+      "o",
+      "r",
+      7,
+      [entry(1), entry(2)],
+      "me",
+    );
+
+    const call = f.createReview.mock.calls[0] as unknown as [
+      { comments: unknown[] },
+    ];
+    expect(call[0].comments).toEqual([
+      { path: "src/f2.ts", line: 3, body: "reply 2" },
+    ]);
+    expect(f.replies.map((r) => r.thread)).toEqual(["T1"]);
+  });
+
+  it("refuses without touching anything when a pending review exists", async () => {
+    const f = fakeOctokit({ threads: { 1: "T1" }, pending: true });
+
+    const result = await createPendingReview(
+      f.octokit,
+      "o",
+      "r",
+      7,
+      [entry(1)],
+      "me",
+    );
+
+    expect(result).toEqual({ created: false, reason: "pending-review-exists" });
+    expect(f.createReview).not.toHaveBeenCalled();
+  });
+
+  it("deletes the half-built pending review when a reply fails, so a retry isn't blocked", async () => {
+    const f = fakeOctokit({
+      threads: { 1: "T1", 2: "T2" },
+      failReplyFor: "T2",
+    });
+
+    await expect(
+      createPendingReview(f.octokit, "o", "r", 7, [entry(1), entry(2)], "me"),
+    ).rejects.toThrow("boom");
+
+    expect(f.deletePendingReview).toHaveBeenCalledWith(
+      expect.objectContaining({ review_id: 900, pull_number: 7 }),
+    );
   });
 });

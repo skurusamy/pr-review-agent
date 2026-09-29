@@ -276,10 +276,6 @@ button.primary:hover:not(:disabled) {
   align-items: flex-start;
   gap: var(--space-4);
 }
-.activity-head button {
-  padding: var(--space-2) var(--space-3);
-  font-size: 0.9rem;
-}
 .steps {
   list-style: none;
   margin: var(--space-3) 0 0;
