@@ -191,3 +191,59 @@ describe("postableReviewSchema", () => {
     );
   });
 });
+
+describe("posting after the verify pass", () => {
+  const checked = (
+    status: "confirmed" | "refuted" | "unsure" | "unchecked",
+    over: Partial<Finding> = {},
+  ): Finding =>
+    finding({ verification: { status, evidence: `e-${status}` }, ...over });
+
+  it("posts only confirmed findings inline", () => {
+    const comments = buildReviewComments([
+      checked("confirmed", { title: "A" }),
+      checked("refuted", { title: "B" }),
+      checked("unsure", { title: "C" }),
+      checked("unchecked", { title: "D" }),
+    ]);
+    expect(comments.map((c) => c.body)).toEqual([expect.stringContaining("A")]);
+  });
+
+  it("still posts a finding that never went through the verify pass", () => {
+    expect(buildReviewComments([finding()])).toHaveLength(1);
+  });
+
+  it("lists not-confirmed findings in the body with the check's evidence, and counts dismissed ones", () => {
+    const body = buildReviewBody({
+      assessment: "a",
+      findings: [
+        checked("unsure", { title: "Maybe" }),
+        checked("refuted", { title: "Wrong" }),
+      ],
+      unanchored: [checked("refuted", { title: "Also wrong" })],
+      skippedFiles: [],
+    });
+    expect(body).toContain("## Not confirmed");
+    expect(body).toContain("Maybe");
+    expect(body).toContain("e-unsure");
+    expect(body).not.toContain("Wrong**");
+    expect(body).toContain(
+      "2 finding(s) were checked a second time and dismissed",
+    );
+  });
+
+  it("accepts a verification from the browser and rejects an unknown status", () => {
+    const ok = postableReviewSchema.safeParse({
+      ...review,
+      findings: [checked("confirmed")],
+    });
+    expect(ok.success).toBe(true);
+    const bad = postableReviewSchema.safeParse({
+      ...review,
+      findings: [
+        { ...finding(), verification: { status: "great", evidence: "" } },
+      ],
+    });
+    expect(bad.success).toBe(false);
+  });
+});

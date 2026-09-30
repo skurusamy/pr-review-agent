@@ -1,5 +1,6 @@
 import { createOctokit } from "./github/client.js";
 import { checkoutPullRequestHead, withCheckout } from "./github/checkout.js";
+import { verifyFinding, verifyFindings } from "./codeReview/verifyFindings.js";
 import { prUrlOf } from "./prUrl.js";
 import { fetchPrContext } from "./briefing/fetchPrContext.js";
 import { fetchReviewThreads } from "./github/reviewComments.js";
@@ -85,11 +86,23 @@ export async function runCodeReview(
     async (checkout) => {
       onStep("Reviewing the code");
       log("Reviewing the code... (waiting for the model)");
-      const review = await generateCodeReview(
+      const reviewed = await generateCodeReview(
         context,
         checkout.dir,
         log,
         abortController,
+      );
+
+      // A second, fresh session tries to disprove each finding before it is
+      // shown as standing. Skipped when there is nothing to check.
+      if (reviewed.findings.length + reviewed.unanchored.length > 0) {
+        onStep("Checking the findings");
+      }
+      const review = await verifyFindings(
+        reviewed,
+        (finding) =>
+          verifyFinding(context, checkout.dir, finding, log, abortController),
+        { log },
       );
 
       const prUrl = prUrlOf(owner, repo, prNumber);

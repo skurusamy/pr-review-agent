@@ -53,10 +53,25 @@ function severityCounts(findings) {
     .join(" · ");
 }
 
+// What the second check concluded, worded like formatReview.ts. Only findings
+// that went through the verify pass carry one.
+const CHECK_LABEL = {
+  confirmed: "Confirmed by a second check",
+  refuted: "Dismissed by a second check",
+  unsure: "Not confirmed: the second check could not decide",
+  unchecked: "Not checked",
+};
+
+// The same rule as postsInline() in src/codeReview/verification.ts: a finding
+// nobody checked keeps the old behavior, a checked one goes inline only if confirmed.
+const postsInline = (f) =>
+  !f.verification || f.verification.status === "confirmed";
+const isDismissed = (f) => f.verification?.status === "refuted";
+
 function findingCard(f) {
   return h(
     "article",
-    `cr-finding cr-${f.severity}`,
+    `cr-finding cr-${f.severity}${isDismissed(f) ? " cr-dismissed" : ""}`,
     h(
       "div",
       "cr-head",
@@ -70,6 +85,12 @@ function findingCard(f) {
       h("span", "cr-category", f.category),
     ),
     h("div", "cr-body", prose(f.explanation)),
+    f.verification &&
+      h(
+        "p",
+        `cr-check cr-check-${f.verification.status}`,
+        `${CHECK_LABEL[f.verification.status]}: ${f.verification.evidence}`,
+      ),
   );
 }
 
@@ -153,7 +174,7 @@ function actions(parts, data) {
         idle();
       }
     });
-    const n = review.findings.length;
+    const n = review.findings.filter(postsInline).length;
     status.textContent = `Create a pending review on ${parts.owner}/${parts.repo}#${parts.number} with ${n} inline comment(s)? It stays private until you submit it on GitHub.`;
     box.replaceChildren(status, confirm, cancel);
   });
@@ -177,7 +198,14 @@ function render(data) {
     heading.append(...inline(title));
   }
 
-  const counts = severityCounts(review.findings);
+  // Dismissed findings stay on screen, but in their own section, not among
+  // the findings the reviewer stands behind.
+  const standing = review.findings.filter((f) => !isDismissed(f));
+  const standingOffDiff = review.unanchored.filter((f) => !isDismissed(f));
+  const dismissed = [...review.findings, ...review.unanchored].filter(
+    isDismissed,
+  );
+  const counts = severityCounts(standing);
   const header = h(
     "header",
     "bf-header",
@@ -196,23 +224,37 @@ function render(data) {
 
   box.append(
     section(
-      `Findings (${review.findings.length})${counts ? ` · ${counts}` : ""}`,
-      review.findings.length > 0
-        ? review.findings.map(findingCard)
+      `Findings (${standing.length})${counts ? ` · ${counts}` : ""}`,
+      standing.length > 0
+        ? standing.map(findingCard)
         : h("p", "muted", "No findings the reviewer would stand behind."),
     ),
   );
 
-  if (review.unanchored.length > 0) {
+  if (standingOffDiff.length > 0) {
     box.append(
       section(
-        `Not anchored to the diff (${review.unanchored.length})`,
+        `Not anchored to the diff (${standingOffDiff.length})`,
         h(
           "p",
           "muted",
           "These name a line that is not part of the diff, so they can't be posted as inline comments.",
         ),
-        review.unanchored.map(findingCard),
+        standingOffDiff.map(findingCard),
+      ),
+    );
+  }
+
+  if (dismissed.length > 0) {
+    box.append(
+      section(
+        `Checked and dismissed (${dismissed.length})`,
+        h(
+          "p",
+          "muted",
+          "The review raised these, but a second check found they do not hold. They are listed so nothing is hidden, and they are not posted.",
+        ),
+        dismissed.map(findingCard),
       ),
     );
   }
