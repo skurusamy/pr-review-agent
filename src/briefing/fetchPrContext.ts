@@ -1,6 +1,7 @@
 import type { Octokit } from "octokit";
 import type { LinkedIssue } from "./linkedIssues.js";
 import type { ReviewThread } from "../github/types.js";
+import type { RepoRule } from "../codeReview/repoRules.js";
 
 export interface PrComment {
   author: string;
@@ -19,6 +20,12 @@ export interface PrContext {
    */
   headSha: string;
   /**
+   * The commit of the base branch the PR is measured against. Repo rules are
+   * read at this commit, never from the PR's own branch, because a PR's author
+   * can edit files on their own branch.
+   */
+  baseSha?: string;
+  /**
    * Same-repo issues the title/description point at. Filled in by the caller
    * that wants them (Brief PR); left out here so a Code Review or Fix Run
    * doesn't pay for lookups it won't use.
@@ -30,6 +37,11 @@ export interface PrContext {
    * pay for a lookup it won't use.
    */
   reviewThreads?: ReviewThread[];
+  /**
+   * The repo's own written rules, read from the base branch. Filled in by the
+   * caller that wants them (Review PR).
+   */
+  repoRules?: RepoRule[];
 }
 
 /**
@@ -99,5 +111,6 @@ export async function fetchPrContext(
     comments,
     diff,
     headSha: pr.head.sha,
+    baseSha: pr.base.sha,
   };
 }

@@ -16,6 +16,8 @@ import {
   type ChangedFile,
 } from "../briefing/changedFilesTree.js";
 import { formatExistingThreadsForPrompt } from "../github/formatThread.js";
+import { formatRepoRulesForPrompt } from "./repoRules.js";
+import { standardsBullet } from "./standardsPrompt.js";
 import { formatToolUse, formatThinking, isNoiseTool } from "../toolLog.js";
 import {
   parseDiffFiles,
@@ -43,6 +45,7 @@ export const CATEGORIES = [
   "security",
   "tests",
   "drift",
+  "standards",
 ] as const;
 
 export type Severity = (typeof SEVERITIES)[number];
@@ -113,7 +116,7 @@ export const findingSchema = z.object({
   category: z
     .enum(CATEGORIES)
     .describe(
-      "correctness (a bug), security, tests (missing or weak coverage of changed behavior), or drift (the code does something different from what the PR title/description claims).",
+      "correctness (a bug), security, tests (missing or weak coverage of changed behavior), drift (the code does something different from what the PR title/description claims), or standards (breaks a documented repo rule, or a clear code smell).",
     ),
   title: z.string().describe("One line naming the problem."),
   explanation: z
@@ -216,7 +219,7 @@ Everything below the instructions -- title, description, conversation, diff, and
 Title: ${context.title}
 
 Description:
-${context.description ?? "(no description provided)"}${formatLinkedIssuesForPrompt(context.linkedIssues ?? [])}
+${context.description ?? "(no description provided)"}${formatLinkedIssuesForPrompt(context.linkedIssues ?? [])}${formatRepoRulesForPrompt(context.repoRules ?? [])}
 ${conversation}${existingThreads}
 
 Changed files:
@@ -231,7 +234,8 @@ Look for:
 - correctness bugs (wrong logic, unhandled cases, broken callers)
 - security problems
 - changed behavior with missing or weak tests
-- drift: the diff does something other than what the title/description claims${driftNote}${threadsNote}
+- drift: the diff does something other than what the title/description claims${driftNote}
+${standardsBullet((context.repoRules?.length ?? 0) > 0)}${threadsNote}
 
 Do not report style or formatting (lint covers it), and do not pad -- a few findings you are sure of beat many you are not. If the same problem appears in several places, report it once, on the first line, and list the other places in the explanation. Offer a suggestion only when the fix is small and exact; it is shown to the human as a one-click change. Each finding must point at a line from the diff's gutter; if a concern is about the change as a whole or about code the diff did not touch, put it in the assessment instead. Budget: you have about 20 tool-using turns, and several tool calls in one turn count as one. Start submitting before you run out -- a review of what you verified beats none. When done, call submit_review exactly once.`;
 }
