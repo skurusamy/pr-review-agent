@@ -73,3 +73,41 @@ describe("formatBriefingMarkdown", () => {
     expect(md).toContain("Nothing in particular stood out.");
   });
 });
+
+describe("formatBriefingMarkdown for a deeper briefing", () => {
+  it("adds how-it-fits and a numbered reading order right after the summary", () => {
+    const md = formatBriefingMarkdown(
+      "t",
+      "u",
+      makeBriefing({
+        howItFits: "Called from the router.",
+        readingOrder: [
+          { path: "src/a.ts", why: "Start here." },
+          { path: "src/b.ts", why: "The caller." },
+        ],
+      }),
+    );
+    expect(md).toContain("## How it fits in\n\nCalled from the router.");
+    expect(md).toContain(
+      "## Where to start reading\n\n1. `src/a.ts`: Start here.\n2. `src/b.ts`: The caller.",
+    );
+    expect(md.indexOf("## Summary")).toBeLessThan(
+      md.indexOf("## How it fits in"),
+    );
+    expect(md.indexOf("## Where to start reading")).toBeLessThan(
+      md.indexOf("## Changed files"),
+    );
+  });
+
+  it("a quick briefing has neither section", () => {
+    const md = formatBriefingMarkdown("t", "u", makeBriefing());
+    expect(md).not.toContain("How it fits in");
+    expect(md).not.toContain("Where to start reading");
+  });
+
+  it("an empty reading order adds no section", () => {
+    expect(
+      formatBriefingMarkdown("t", "u", makeBriefing({ readingOrder: [] })),
+    ).not.toContain("Where to start reading");
+  });
+});

@@ -48,7 +48,16 @@ describe("parseArgs", () => {
       repo: "pr-review-agent",
       prNumber: 10,
       post: false,
+      deeper: false,
     });
+  });
+
+  it("recognizes --deeper on the brief command only", () => {
+    const args = parseArgs(["brief", "a/b", "1", "--deeper"]);
+    expect(args.command === "brief" && args.deeper).toBe(true);
+    expect(parseArgs(["review", "a/b", "1", "--deeper"])).not.toHaveProperty(
+      "deeper",
+    );
   });
 
   it("recognizes --post on the brief command", () => {

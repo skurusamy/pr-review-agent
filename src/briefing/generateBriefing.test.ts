@@ -1,6 +1,21 @@
-import { describe, expect, it } from "vitest";
-import { buildBriefingPrompt, parseBriefingInput } from "./generateBriefing.js";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { query } from "@anthropic-ai/claude-agent-sdk";
+import {
+  BriefingIncompleteError,
+  buildBriefingPrompt,
+  buildBriefingQueryOptions,
+  buildDeeperBriefingQueryOptions,
+  generateBriefing,
+  parseBriefingInput,
+  parseBriefMode,
+} from "./generateBriefing.js";
 import type { PrContext } from "./fetchPrContext.js";
+
+// Only query() is faked; tool() and createSdkMcpServer() stay real.
+vi.mock("@anthropic-ai/claude-agent-sdk", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@anthropic-ai/claude-agent-sdk")>()),
+  query: vi.fn(),
+}));
 
 function makeContext(overrides: Partial<PrContext> = {}): PrContext {
   return {
@@ -118,5 +133,170 @@ describe("buildBriefingPrompt", () => {
     ];
     const prompt = buildBriefingPrompt(makeContext(), files);
     expect(prompt).toContain("src/page.ts");
+  });
+});
+
+describe("the deeper briefing", () => {
+  const good = {
+    summary: "Adds a helper.",
+    mermaidDiagram: "flowchart LR\n  A --> B",
+    risks: [],
+  };
+
+  it("accepts how-it-fits and a reading order, and they stay optional", () => {
+    expect(parseBriefingInput(good)).toEqual(good);
+    const deeper = {
+      ...good,
+      howItFits: "Called from the router.",
+      readingOrder: [{ path: "src/a.ts", why: "Start here." }],
+    };
+    expect(parseBriefingInput(deeper)).toEqual(deeper);
+    expect(
+      parseBriefingInput({ ...good, readingOrder: [{ path: "", why: "x" }] }),
+    ).toBeUndefined();
+    expect(parseBriefingInput({ ...good, howItFits: "  " })).toBeUndefined();
+  });
+
+  it("only a deeper prompt mentions the checkout, and it tells the model that it is data", () => {
+    const quick = buildBriefingPrompt(makeContext(), []);
+    const deeper = buildBriefingPrompt(makeContext(), [], "deeper");
+    expect(quick).toContain("no local checkout to read");
+    expect(quick).not.toContain("howItFits");
+    expect(deeper).not.toContain("no local checkout to read");
+    expect(deeper).toContain("howItFits");
+    expect(deeper).toContain("readingOrder");
+    expect(deeper).toContain("DATA");
+  });
+
+  it("the quick session stays tool-less and in the temp dir", () => {
+    const options = buildBriefingQueryOptions({} as never, undefined, {});
+    expect(options.tools).toEqual([]);
+    expect(options.cwd).not.toBe("/tmp/checkout");
+    expect(options.maxTurns).toBe(4);
+  });
+
+  it("the deeper session is locked down like the review: read-only tools in the checkout, no settings, no GitHub token", () => {
+    const options = buildDeeperBriefingQueryOptions(
+      "/tmp/checkout",
+      {} as never,
+      undefined,
+      { GITHUB_TOKEN: "t", PATH: "p" },
+    );
+    expect(options.cwd).toBe("/tmp/checkout");
+    expect(options.tools).toEqual(["Read", "Grep", "Glob"]);
+    expect(options.settingSources).toEqual([]);
+    expect(options.env).not.toHaveProperty("GITHUB_TOKEN");
+    expect(options.maxTurns).toBeGreaterThan(4);
+    expect(options.maxTurns).toBeLessThan(24);
+  });
+
+  it.each([
+    ["quick", "quick"],
+    ["deeper", "deeper"],
+    ["Deeper", undefined],
+    ["", undefined],
+    [undefined, undefined],
+    [1, undefined],
+  ])("parseBriefMode(%j) is %j", (value, expected) => {
+    expect(parseBriefMode(value)).toBe(expected);
+  });
+});
+
+function answer(input: unknown, sessionId = "s1") {
+  return {
+    type: "assistant",
+    session_id: sessionId,
+    message: {
+      content: [
+        {
+          type: "tool_use",
+          name: "mcp__briefing-tools__submit_briefing",
+          input,
+        },
+      ],
+    },
+  };
+}
+const stream = (...messages: unknown[]) =>
+  (async function* () {
+    for (const m of messages) yield m;
+  })() as never;
+const maxTurns = () => new Error("Reached maximum number of turns (16)");
+const quiet = () => {};
+
+describe("generateBriefing", () => {
+  beforeEach(() => vi.mocked(query).mockReset());
+  const good = {
+    summary: "Adds a helper.",
+    mermaidDiagram: "flowchart LR\n  A --> B",
+    risks: [],
+  };
+
+  it("returns the deeper fields the model sent", async () => {
+    vi.mocked(query).mockReturnValue(
+      stream(
+        answer({
+          ...good,
+          howItFits: "Used by the router.",
+          readingOrder: [{ path: "src/a.ts", why: "Start here." }],
+        }),
+      ),
+    );
+    const briefing = await generateBriefing(makeContext(), quiet, undefined, {
+      checkoutDir: "/tmp/checkout",
+    });
+    expect(briefing.howItFits).toBe("Used by the router.");
+    expect(briefing.readingOrder).toEqual([
+      { path: "src/a.ts", why: "Start here." },
+    ]);
+    expect(vi.mocked(query).mock.calls[0]![0].options!.cwd).toBe(
+      "/tmp/checkout",
+    );
+  });
+
+  it("a quick briefing has no deeper fields", async () => {
+    vi.mocked(query).mockReturnValue(stream(answer(good)));
+    const briefing = await generateBriefing(makeContext(), quiet);
+    expect(briefing).not.toHaveProperty("howItFits");
+  });
+
+  it("a deeper briefing that runs out of turns is resumed once and asked to submit", async () => {
+    vi.mocked(query)
+      .mockReturnValueOnce(
+        (async function* () {
+          yield { type: "system", session_id: "sess-9" };
+          throw maxTurns();
+        })() as never,
+      )
+      .mockReturnValueOnce(stream(answer(good, "sess-9")));
+    const briefing = await generateBriefing(makeContext(), quiet, undefined, {
+      checkoutDir: "/tmp/checkout",
+    });
+    expect(briefing.summary).toBe("Adds a helper.");
+    const second = vi.mocked(query).mock.calls[1]![0];
+    expect(second.options!.resume).toBe("sess-9");
+    expect(second.prompt).toContain("out of investigation turns");
+  });
+
+  it("a quick briefing that runs out of turns fails rather than resuming", async () => {
+    vi.mocked(query).mockReturnValue(
+      (async function* () {
+        yield { type: "system", session_id: "sess-1" };
+        throw maxTurns();
+      })() as never,
+    );
+    await expect(generateBriefing(makeContext(), quiet)).rejects.toBeInstanceOf(
+      BriefingIncompleteError,
+    );
+    expect(query).toHaveBeenCalledTimes(1);
+  });
+
+  it("ignores an invalid submission and takes the retry", async () => {
+    vi.mocked(query).mockReturnValue(
+      stream(answer({ ...good, mermaidDiagram: undefined }), answer(good)),
+    );
+    expect((await generateBriefing(makeContext(), quiet)).summary).toBe(
+      "Adds a helper.",
+    );
   });
 });

@@ -2,7 +2,11 @@ import { createOctokit } from "./github/client.js";
 import { prUrlOf } from "./prUrl.js";
 import { fetchPrContext } from "./briefing/fetchPrContext.js";
 import { fetchLinkedIssuesOfPr } from "./briefing/linkedIssues.js";
-import { generateBriefing } from "./briefing/generateBriefing.js";
+import {
+  generateBriefing,
+  type BriefMode,
+} from "./briefing/generateBriefing.js";
+import { checkoutPullRequestHead, withCheckout } from "./github/checkout.js";
 import { formatBriefingMarkdown } from "./briefing/formatBriefing.js";
 
 export interface BriefRunOptions {
@@ -16,11 +20,13 @@ export interface BriefRunOptions {
   abortController?: AbortController;
   /** Starts the next step of the progress checklist (the web UI shows it). */
   onStep?: (label: string) => void;
+  /** quick (default) reads only the PR's text and diff; deeper also reads the code. */
+  mode?: BriefMode;
 }
 
 /**
- * One PR Briefing: fetch the PR's title/description/conversation/diff (no
- * checkout), generate a Briefing, and render it as Markdown. Returns the
+ * One PR Briefing: fetch the PR's title/description/conversation/diff (a
+ * read-only checkout only in deeper mode), generate a Briefing, and render it as Markdown. Returns the
  * rendered text rather than only logging it -- the next ticket's UI/file/
  * GitHub-comment paths all need the value itself, not just console output.
  */
@@ -33,6 +39,7 @@ export async function runBrief(options: BriefRunOptions): Promise<string> {
     log = console.log,
     abortController,
     onStep = () => {},
+    mode = "quick",
   } = options;
   const octokit = createOctokit(githubToken);
 
@@ -50,9 +57,29 @@ export async function runBrief(options: BriefRunOptions): Promise<string> {
     log,
   );
 
-  onStep("Generating briefing");
-  log("Generating briefing... (waiting for the model)");
-  const briefing = await generateBriefing(context, log, abortController);
+  let briefing;
+  if (mode === "deeper") {
+    // Read-only, like Review PR: the pull ref, so merged and fork PRs work.
+    onStep("Checking out the branch");
+    log("Checking out the PR's head commit (deeper briefing)...");
+    briefing = await withCheckout(
+      () =>
+        checkoutPullRequestHead(octokit, owner, repo, prNumber, githubToken, {
+          readOnly: true,
+        }),
+      (checkout) => {
+        onStep("Generating briefing");
+        log("Generating a deeper briefing... (waiting for the model)");
+        return generateBriefing(context, log, abortController, {
+          checkoutDir: checkout.dir,
+        });
+      },
+    );
+  } else {
+    onStep("Generating briefing");
+    log("Generating briefing... (waiting for the model)");
+    briefing = await generateBriefing(context, log, abortController);
+  }
 
   return formatBriefingMarkdown(
     context.title,

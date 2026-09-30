@@ -62,7 +62,12 @@ async function main(): Promise<void> {
     return;
   }
 
-  const markdown = await runBrief({ ...pr, githubToken, log });
+  const markdown = await runBrief({
+    ...pr,
+    githubToken,
+    log,
+    mode: args.deeper ? "deeper" : "quick",
+  });
   console.log(`\n${markdown}`);
 
   const fileName = markdownFileName("pr-briefing", pr);

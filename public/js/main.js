@@ -25,6 +25,8 @@ const dryRunInput = document.getElementById("dryRun");
 const dryRunRow = document.getElementById("dryrun-row");
 const resolvedInput = document.getElementById("includeResolved");
 const resolvedRow = document.getElementById("resolved-row");
+const deeperRow = document.getElementById("deeper-row");
+const deeperInput = document.getElementById("deeperBrief");
 const statusEl = document.getElementById("status");
 const statusText = document.getElementById("status-text");
 const modeInputs = document.querySelectorAll('input[name="mode"]');
@@ -77,6 +79,8 @@ function syncMode() {
   // Only Fix comments writes anything; Brief and Review are read-only.
   dryRunRow.hidden = mode !== "fix";
   resolvedRow.hidden = mode !== "fix";
+  // Quick is the default; deeper only applies to the briefing.
+  deeperRow.hidden = mode !== "brief";
 }
 
 for (const input of modeInputs) input.addEventListener("change", syncMode);
@@ -123,7 +127,10 @@ const ACTIONS = {
     startBriefing();
     const markdown = await streamRequest(
       "/brief",
-      { prUrl: prUrlInput.value },
+      {
+        prUrl: prUrlInput.value,
+        mode: deeperInput.checked ? "deeper" : "quick",
+      },
       appendLine,
       signal,
       { onStep: applyStep },

@@ -13,6 +13,8 @@ export interface BriefCommandArgs {
   repo: string;
   prNumber: number;
   post: boolean;
+  /** Also read the code in a read-only checkout (slower, costs more). */
+  deeper: boolean;
 }
 
 export interface ReviewCommandArgs {
@@ -26,7 +28,7 @@ export interface ReviewCommandArgs {
 export type CliArgs = FixCommandArgs | BriefCommandArgs | ReviewCommandArgs;
 
 const USAGE = [
-  "Usage: pr-review-agent brief <owner/repo> <pr-number> [--post]",
+  "Usage: pr-review-agent brief <owner/repo> <pr-number> [--deeper] [--post]",
   "   or: pr-review-agent review <owner/repo> <pr-number> [--post]",
   "   or: pr-review-agent fix <owner/repo> <pr-number> [--dry-run] [--include-resolved]",
 ].join("\n");
@@ -87,6 +89,7 @@ export function parseArgs(argv: string[]): CliArgs {
       repo,
       prNumber,
       post: rest.includes("--post"),
+      deeper: rest.includes("--deeper"),
     };
   }
 
