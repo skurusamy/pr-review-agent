@@ -3,6 +3,8 @@ import { checkoutPullRequestHead, withCheckout } from "./github/checkout.js";
 import { verifyFinding, verifyFindings } from "./codeReview/verifyFindings.js";
 import { prUrlOf } from "./prUrl.js";
 import { fetchPrContext } from "./briefing/fetchPrContext.js";
+import { fetchRepoRules } from "./codeReview/repoRules.js";
+import { parseChangedFiles } from "./briefing/changedFilesTree.js";
 import { fetchReviewThreads } from "./github/reviewComments.js";
 import { fetchLinkedIssuesOfPr } from "./briefing/linkedIssues.js";
 import {
@@ -65,6 +67,27 @@ export async function runCodeReview(
     context,
     log,
   );
+
+  // The repo's own written rules, read from the BASE branch so the PR being
+  // reviewed cannot edit them. Plain code, like the linked issues.
+  if (context.baseSha) {
+    log("  Reading the repo's own rules from the base branch...");
+    context.repoRules = await fetchRepoRules(
+      octokit,
+      {
+        owner,
+        repo,
+        baseSha: context.baseSha,
+        changedPaths: parseChangedFiles(context.diff).map((f) => f.path),
+      },
+      log,
+    );
+    if (context.repoRules.length > 0) {
+      log(
+        `  Found ${context.repoRules.length} rule file(s): ${context.repoRules.map((r) => r.path).join(", ")}`,
+      );
+    }
+  }
 
   onStep("Checking out the branch");
   // Points already raised inline, so the review builds on them instead of

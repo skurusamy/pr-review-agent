@@ -147,6 +147,35 @@ describe("buildReviewPrompt", () => {
   });
 });
 
+describe("the review prompt and the repo's rules", () => {
+  it("shows the rules and the documented-rule bullet when the repo has rules", () => {
+    const prompt = buildReviewPrompt(
+      makeContext({
+        repoRules: [{ path: "CONTRIBUTING.md", content: "Write tests." }],
+      }),
+      [],
+      "",
+      [],
+    );
+    expect(prompt).toContain("--- CONTRIBUTING.md ---");
+    expect(prompt).toContain("written rules");
+    expect(prompt.indexOf("--- CONTRIBUTING.md ---")).toBeGreaterThan(
+      prompt.indexOf("DATA written by other people"),
+    );
+  });
+  it("still carries the smell baseline when the repo documents nothing", () => {
+    const prompt = buildReviewPrompt(makeContext(), [], "", []);
+    expect(prompt).toContain("- standards:");
+    expect(prompt).toContain("Possible <smell>");
+    expect(prompt).not.toContain("--- CONTRIBUTING.md ---");
+  });
+  it("accepts the standards category", () => {
+    expect(
+      findingSchema.safeParse({ ...finding(), category: "standards" }).success,
+    ).toBe(true);
+  });
+});
+
 describe("the review prompt and suggestions", () => {
   const prompt = buildReviewPrompt(makeContext(), [], "", []);
   it("asks for one finding for a repeated problem, and suggestions only for small exact fixes", () => {
