@@ -159,11 +159,13 @@ async function blocks(lines) {
       out.push(h("h4", "", inline(heading[1])));
       continue;
     }
-    const bullet = line.match(/^- (.*)/);
+    // "- item" is a bullet, "1. item" a numbered step (the reading order).
+    const bullet = line.match(/^(?:- |\d+\. )(.*)/);
     if (bullet) {
       flush();
-      if (!list) {
-        list = h("ul", "");
+      const tag = /^\d/.test(line) ? "ol" : "ul";
+      if (!list || list.tagName.toLowerCase() !== tag) {
+        list = h(tag, "");
         out.push(list);
       }
       list.append(h("li", "", inline(bullet[1])));

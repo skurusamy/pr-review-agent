@@ -6,6 +6,7 @@ import { loadSecrets } from "./secrets.js";
 import { parsePrUrl, type PrReference } from "./prUrl.js";
 import { runFix } from "./fixRun.js";
 import { runBrief } from "./briefRun.js";
+import { parseBriefMode } from "./briefing/generateBriefing.js";
 import { z } from "zod";
 import { runCodeReview } from "./codeReviewRun.js";
 import { postableReviewSchema } from "./codeReview/postReview.js";
@@ -274,9 +275,19 @@ app.post("/review/post", async (req, res) => {
 });
 
 app.post("/brief", async (req, res) => {
-  const { prUrl } = req.body as { prUrl?: string };
+  const { prUrl, mode: rawMode } = req.body as {
+    prUrl?: string;
+    mode?: unknown;
+  };
   const pr = parseOrReject(res, prUrl ?? "");
   if (!pr) return;
+  // Absent means quick; anything else that is not a known mode is refused
+  // rather than silently run as quick.
+  const mode = rawMode === undefined ? "quick" : parseBriefMode(rawMode);
+  if (!mode) {
+    res.status(400).json({ error: 'mode must be "quick" or "deeper".' });
+    return;
+  }
 
   // The rendered Markdown rides as one {kind: "result"} line rather than a
   // separate response, so this stays a single request like the others.
@@ -288,6 +299,7 @@ app.post("/brief", async (req, res) => {
     run: async ({ log, step, send, recorder, abortController }) => {
       const markdown = await runBrief({
         ...pr,
+        mode,
         onStep: step,
         githubToken: secrets.githubToken,
         log,

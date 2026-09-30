@@ -22,6 +22,14 @@ export function formatBriefingMarkdown(
       ? `\n## Linked issues\n\n${briefing.linkedIssues.map((i) => `- #${i.number} ${i.title} (${i.kind}, ${i.state})`).join("\n")}\n`
       : "";
 
+  const fits = briefing.howItFits
+    ? `\n## How it fits in\n\n${briefing.howItFits}\n`
+    : "";
+  const reading =
+    briefing.readingOrder && briefing.readingOrder.length > 0
+      ? `\n## Where to start reading\n\n${briefing.readingOrder.map((r, i) => `${i + 1}. \`${r.path}\`: ${r.why}`).join("\n")}\n`
+      : "";
+
   return `# PR Briefing: ${prTitle}
 
 ${prUrl}
@@ -29,7 +37,7 @@ ${prUrl}
 ## Summary
 
 ${briefing.summary}
-
+${fits}${reading}
 ## Changed files
 
 \`\`\`
