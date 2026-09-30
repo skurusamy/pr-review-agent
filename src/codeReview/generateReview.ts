@@ -118,11 +118,15 @@ export const findingSchema = z.object({
     .describe(
       "correctness (a bug), security, tests (missing or weak coverage of changed behavior), drift (the code does something different from what the PR title/description claims), or standards (breaks a documented repo rule, or a clear code smell).",
     ),
-  title: z.string().describe("One line naming the problem."),
+  title: z
+    .string()
+    .describe(
+      "One line naming the problem, in plain words. Code in `backticks`.",
+    ),
   explanation: z
     .string()
     .describe(
-      "Why this is a problem, with the concrete input or situation that triggers it. Say what you checked in the surrounding code.",
+      "Why this is a problem, with the concrete input or situation that triggers it. Say what you checked in the surrounding code. Short paragraphs, with every file path, function and code expression in `backticks`.",
     ),
   suggestion: suggestionSchema
     .optional()

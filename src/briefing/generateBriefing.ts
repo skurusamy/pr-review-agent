@@ -84,7 +84,7 @@ const briefingInputShape = {
     .string()
     .min(1)
     .describe(
-      "A concise prose summary of what this PR does and why. If the diff seems to drift from what the title/description claims, say so explicitly here.",
+      "What this PR does and why, for a busy reviewer. The first sentence says, in plain words, what the PR does. Then short paragraphs of two or three sentences, separated by a blank line. If the diff seems to drift from what the title/description claims, say so explicitly here. Write every file path, function, class, constant and code expression in `backticks`.",
     ),
   mermaidDiagram: z
     .string()
@@ -96,7 +96,7 @@ const briefingInputShape = {
   risks: z
     .array(z.string())
     .describe(
-      "Specific things a reviewer should double-check, ordered by importance. Empty array if genuinely nothing stands out.",
+      "Specific things a reviewer should double-check, ordered by importance. Each one is a sentence naming what to check, then a sentence on why it matters. Write every file path, function and code expression in `backticks`. Empty array if genuinely nothing stands out.",
     ),
   howItFits: z
     .string()
@@ -104,7 +104,7 @@ const briefingInputShape = {
     .min(1)
     .optional()
     .describe(
-      "Deeper briefing only: how this change fits into the code around it, from what you read in the checkout: what calls the changed code, what it depends on, and what else could be affected. A few sentences.",
+      "Deeper briefing only: how this change fits into the code around it, from what you read in the checkout: what calls the changed code, what it depends on, and what else could be affected. Short paragraphs, with every file path, function and code expression in `backticks`.",
     ),
   readingOrder: z
     .array(
@@ -113,7 +113,9 @@ const briefingInputShape = {
         why: z
           .string()
           .min(1)
-          .describe("One line: why to read this one at this point."),
+          .describe(
+            "One sentence: why to read this one at this point. Put any function or code expression in `backticks`.",
+          ),
       }),
     )
     .optional()
