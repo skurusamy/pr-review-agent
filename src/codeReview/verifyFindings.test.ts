@@ -165,6 +165,16 @@ describe("buildCheckPrompt", () => {
     expect(prompt).toContain("DATA");
   });
 
+  it("shows the proposed replacement and asks whether it holds", () => {
+    const prompt = buildCheckPrompt(
+      context,
+      finding({ suggestion: { startLine: 10, replacement: "const y = 2;" } }),
+    );
+    expect(prompt).toContain("const y = 2;");
+    expect(prompt).toContain("lines 10-11");
+    expect(prompt).toContain("suggestionHolds");
+  });
+
   it("says so when the finding's file is not in the diff", () => {
     expect(
       buildCheckPrompt(context, finding({ path: "src/other.ts" })),
@@ -216,6 +226,42 @@ describe("verifyFinding", () => {
       status: "confirmed",
       evidence: "page.ts:11 has no guard",
     });
+  });
+
+  it("records whether the proposed change holds, only for a finding that has one", async () => {
+    vi.mocked(query).mockReturnValue(
+      stream(
+        answer({ outcome: "confirmed", evidence: "e", suggestionHolds: true }),
+      ),
+    );
+    const withFix = finding({ suggestion: { replacement: "x" } });
+    expect(
+      await verifyFinding(context, "/tmp/x", withFix, quiet),
+    ).toMatchObject({
+      suggestionOk: true,
+    });
+
+    vi.mocked(query).mockReturnValue(
+      stream(
+        answer({ outcome: "confirmed", evidence: "e", suggestionHolds: true }),
+      ),
+    );
+    expect(
+      await verifyFinding(context, "/tmp/x", finding(), quiet),
+    ).not.toHaveProperty("suggestionOk");
+  });
+
+  it("treats a missing answer about the proposed change as not ok", async () => {
+    vi.mocked(query).mockReturnValue(
+      stream(answer({ outcome: "confirmed", evidence: "e" })),
+    );
+    const v = await verifyFinding(
+      context,
+      "/tmp/x",
+      finding({ suggestion: { replacement: "x" } }),
+      quiet,
+    );
+    expect(v.suggestionOk).toBe(false);
   });
 
   it("ignores an invalid answer, warns, and takes the retry", async () => {

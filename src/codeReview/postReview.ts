@@ -10,6 +10,12 @@ import {
   type Finding,
 } from "./generateReview.js";
 import {
+  findingMarker,
+  formatSuggestionBlock,
+  suggestionRange,
+  suggestionSchema,
+} from "./suggestion.js";
+import {
   describeVerification,
   isDismissed,
   postsInline,
@@ -19,6 +25,7 @@ import {
 // A finding that comes back from the browser may carry what the verify pass
 // concluded; the model's own schema (findingSchema) must not allow it.
 const postableFindingSchema = findingSchema.extend({
+  suggestion: suggestionSchema.optional(),
   verification: verificationSchema.optional(),
 });
 
@@ -42,7 +49,14 @@ export type PostableReview = Pick<
 >;
 
 export type PostReviewResult =
-  | { created: true; reviewId: number; url: string; commentCount: number }
+  | {
+      created: true;
+      reviewId: number;
+      url: string;
+      commentCount: number;
+      /** Findings left out because an earlier run already posted them. */
+      alreadyPosted: number;
+    }
   | { created: false; reason: "pending-review-exists" };
 
 const DRAFT_NOTE =
@@ -52,21 +66,57 @@ function formatFindingHeading(f: Finding): string {
   return `**[${f.severity.toUpperCase()}] ${f.title}** · ${f.category}`;
 }
 
+export interface ReviewComment {
+  path: string;
+  line: number;
+  side: "RIGHT";
+  start_line?: number;
+  start_side?: "RIGHT";
+  body: string;
+}
+
+/**
+ * Whether a finding's suggested change may go into the comment. One that has
+ * been through the verify pass needs the check to have judged it correct; one
+ * that has not (an older review) is shown, since a person reads it before
+ * anything is submitted.
+ */
+function suggestionAllowed(f: Finding): boolean {
+  return (
+    f.suggestion !== undefined &&
+    (f.verification === undefined || f.verification.suggestionOk === true)
+  );
+}
+
 /**
  * One inline comment per anchored Finding that is confirmed (or was never
  * put through the verify pass). Not-confirmed and dismissed ones stay out of
- * the PR's inline comments; buildReviewBody says what was left out.
+ * the PR's inline comments; buildReviewBody says what was left out. A comment
+ * with a suggested change spans the lines it replaces and ends with a GitHub
+ * suggestion block; every comment ends with a hidden marker so a later run can
+ * tell it was already posted.
  */
-export function buildReviewComments(
-  findings: Finding[],
-): { path: string; line: number; side: "RIGHT"; body: string }[] {
-  return findings.filter(postsInline).map((f) => ({
-    path: f.path,
-    line: f.line,
-    // Anchors are new-side lines (added or unchanged), never deletions.
-    side: "RIGHT" as const,
-    body: `${formatFindingHeading(f)}\n\n${f.explanation}`,
-  }));
+export function buildReviewComments(findings: Finding[]): ReviewComment[] {
+  return findings.filter(postsInline).map((f) => {
+    const withSuggestion = suggestionAllowed(f) && f.suggestion !== undefined;
+    const parts = [`${formatFindingHeading(f)}\n\n${f.explanation}`];
+    if (withSuggestion) {
+      parts.push(formatSuggestionBlock(f.suggestion!.replacement));
+    }
+    parts.push(findingMarker(f));
+
+    const { start, end } = suggestionRange(f);
+    return {
+      path: f.path,
+      line: f.line,
+      // Anchors are new-side lines (added or unchanged), never deletions.
+      side: "RIGHT" as const,
+      ...(withSuggestion && start < end
+        ? { start_line: start, start_side: "RIGHT" as const }
+        : {}),
+      body: parts.join("\n\n"),
+    };
+  });
 }
 
 /**
@@ -158,7 +208,21 @@ export async function postCodeReviewAsPending(
     return { created: false, reason: "pending-review-exists" };
   }
 
-  const comments = buildReviewComments(review.findings);
+  // A finding an earlier run already posted (and someone submitted) is not
+  // posted again: its marker is in a submitted comment's body. A pending
+  // review of ours was ruled out above, so those are the only places to look.
+  const submitted = await octokit.paginate(
+    octokit.rest.pulls.listReviewComments,
+    { owner, repo, pull_number: prNumber, per_page: 100 },
+  );
+  const fresh = review.findings.filter(
+    (f) => !submitted.some((c) => c.body.includes(findingMarker(f))),
+  );
+  const alreadyPosted =
+    review.findings.filter(postsInline).length -
+    fresh.filter(postsInline).length;
+
+  const comments = buildReviewComments(fresh);
   const { data } = await octokit.rest.pulls.createReview({
     owner,
     repo,
@@ -172,5 +236,6 @@ export async function postCodeReviewAsPending(
     reviewId: data.id,
     url: data.html_url,
     commentCount: comments.length,
+    alreadyPosted,
   };
 }

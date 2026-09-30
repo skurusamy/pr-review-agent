@@ -1,8 +1,13 @@
 import { formatChangedFilesTree } from "../briefing/changedFilesTree.js";
 import type { CodeReview, Finding } from "./generateReview.js";
 import { describeVerification, isDismissed } from "./verification.js";
+import { formatSuggestionBlock, suggestionRange } from "./suggestion.js";
 
 function formatFinding(f: Finding): string {
+  const { start, end } = suggestionRange(f);
+  const suggestion = f.suggestion
+    ? `\n\nSuggested change (${start === end ? `line ${end}` : `lines ${start}-${end}`}):\n\n${formatSuggestionBlock(f.suggestion.replacement, "")}`
+    : "";
   const check = f.verification
     ? `\n\n_${describeVerification(f.verification)}_`
     : "";
@@ -10,7 +15,7 @@ function formatFinding(f: Finding): string {
 
 \`${f.path}:${f.line}\` · ${f.category}
 
-${f.explanation}${check}`;
+${f.explanation}${suggestion}${check}`;
 }
 
 /**

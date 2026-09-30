@@ -27,6 +27,11 @@ import {
 import { selectDiffForReview, type SkippedFile } from "./selectDiff.js";
 import type { Verification } from "./verification.js";
 import {
+  sanitizeSuggestion,
+  suggestionSchema,
+  type Suggestion,
+} from "./suggestion.js";
+import {
   isMaxTurnsError,
   lockedDown,
   watchApiHealth,
@@ -52,6 +57,8 @@ export interface Finding {
   category: FindingCategory;
   title: string;
   explanation: string;
+  /** A small, exact fix GitHub can offer as a one-click "suggested change". */
+  suggestion?: Suggestion;
   /** Set by the verify pass after the review; never by the review session itself. */
   verification?: Verification;
 }
@@ -113,6 +120,11 @@ export const findingSchema = z.object({
     .string()
     .describe(
       "Why this is a problem, with the concrete input or situation that triggers it. Say what you checked in the surrounding code.",
+    ),
+  suggestion: suggestionSchema
+    .optional()
+    .describe(
+      "Only when the fix is small and exact (at most 10 lines, all of them lines from the diff's gutter): the replacement text. Leave it out when the right fix is a judgment call or touches other code.",
     ),
 });
 
@@ -221,7 +233,7 @@ Look for:
 - changed behavior with missing or weak tests
 - drift: the diff does something other than what the title/description claims${driftNote}${threadsNote}
 
-Do not report style or formatting (lint covers it), and do not pad -- a few findings you are sure of beat many you are not. Each finding must point at a line from the diff's gutter; if a concern is about the change as a whole or about code the diff did not touch, put it in the assessment instead. Budget: you have about 20 tool-using turns, and several tool calls in one turn count as one. Start submitting before you run out -- a review of what you verified beats none. When done, call submit_review exactly once.`;
+Do not report style or formatting (lint covers it), and do not pad -- a few findings you are sure of beat many you are not. If the same problem appears in several places, report it once, on the first line, and list the other places in the explanation. Offer a suggestion only when the fix is small and exact; it is shown to the human as a one-click change. Each finding must point at a line from the diff's gutter; if a concern is about the change as a whole or about code the diff did not touch, put it in the assessment instead. Budget: you have about 20 tool-using turns, and several tool calls in one turn count as one. Start submitting before you run out -- a review of what you verified beats none. When done, call submit_review exactly once.`;
 }
 
 /**
@@ -240,7 +252,9 @@ export function partitionFindings(
 
   const anchored: Finding[] = [];
   const unanchored: Finding[] = [];
-  for (const f of findings) {
+  for (const finding of findings) {
+    // A suggestion that could not be applied as written is dropped here, not the finding.
+    const f = sanitizeSuggestion(finding, index);
     (isAnchorable(index, f.path, f.line) ? anchored : unanchored).push(f);
   }
   // Array.prototype.sort is stable, so equal severities keep the model's own order.
