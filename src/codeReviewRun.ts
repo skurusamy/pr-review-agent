@@ -33,7 +33,7 @@ export interface CodeReviewResult {
 }
 
 /**
- * One Code Review: fetch the PR's context, check out its head branch
+ * One Code Review: fetch the PR's context, check out its head commit
  * read-only, and have the model review it. Returns both the structured
  * review (the posting step needs the Findings themselves) and its rendered
  * Markdown (what the CLI prints and the UI/file show).
@@ -76,9 +76,12 @@ export async function runCodeReview(
     prNumber,
   );
 
-  log("Checking out the PR's head branch...");
+  log("Checking out the PR's head commit...");
   return withCheckout(
-    () => checkoutPullRequestHead(octokit, owner, repo, prNumber, githubToken),
+    () =>
+      checkoutPullRequestHead(octokit, owner, repo, prNumber, githubToken, {
+        readOnly: true,
+      }),
     async (checkout) => {
       onStep("Reviewing the code");
       log("Reviewing the code... (waiting for the model)");

@@ -113,19 +113,49 @@ export async function setAgentGitIdentity(dir: string): Promise<void> {
   await git.addConfig("user.email", "pr-review-agent@users.noreply.github.com");
 }
 
+/**
+ * Fetches a pull request's head commit from `refs/pull/N/head` into `dir` and
+ * checks it out detached; returns the commit sha. GitHub keeps that ref after
+ * the PR is merged or its branch is deleted, and for PRs from forks, which a
+ * clone by branch name cannot reach. The url is passed to `fetch` directly and
+ * never saved as a remote, so a token in it cannot end up in `.git/config`.
+ */
+export async function fetchPullRequestHead(
+  dir: string,
+  url: string,
+  prNumber: number,
+): Promise<string> {
+  const git = simpleGit(dir);
+  await git.init();
+  await git.raw(["fetch", "--depth", "1", url, `refs/pull/${prNumber}/head`]);
+  await git.raw(["checkout", "--quiet", "--detach", "FETCH_HEAD"]);
+  return (await git.revparse(["HEAD"])).trim();
+}
+
+export interface CheckoutOptions {
+  /**
+   * Read-only runs (Code Review) only read the files, so they take the pull
+   * ref: it works for merged, branch-deleted and fork PRs. The checkout has no
+   * branch to push to, so `push` throws. Runs that push a fix leave this off
+   * and get the PR's own branch.
+   */
+  readOnly?: boolean;
+}
+
 export async function checkoutPullRequestHead(
   octokit: Octokit,
   owner: string,
   repo: string,
   prNumber: number,
   token: string,
+  options: CheckoutOptions = {},
 ): Promise<Checkout> {
   const { data: pr } = await octokit.rest.pulls.get({
     owner,
     repo,
     pull_number: prNumber,
   });
-  assertSameRepoPullRequest(pr);
+  if (!options.readOnly) assertSameRepoPullRequest(pr);
 
   // realpath matters on macOS: os.tmpdir() returns an unresolved /var/...
   // path, but /var is a symlink to /private/var -- any tool that reports an
@@ -134,6 +164,35 @@ export async function checkoutPullRequestHead(
   // tool's reported path (e.g. to shorten it for logging) silently fails.
   const dir = await realpath(await mkdtemp(join(tmpdir(), "pr-review-agent-")));
   const authenticatedUrl = `https://x-access-token:${token}@github.com/${owner}/${repo}.git`;
+  const plainUrl = `https://github.com/${owner}/${repo}.git`;
+
+  if (options.readOnly) {
+    let headSha: string;
+    try {
+      headSha = await fetchPullRequestHead(dir, authenticatedUrl, prNumber);
+    } catch (error) {
+      // Nothing else cleans this dir up when the fetch fails, and git's
+      // error text repeats the url, token included.
+      await rm(dir, { recursive: true, force: true });
+      if (error instanceof Error) {
+        error.message = error.message.split(token).join("***");
+        if (error.stack) error.stack = error.stack.split(token).join("***");
+      }
+      throw error;
+    }
+    await simpleGit(dir).addRemote("origin", plainUrl);
+    return {
+      dir,
+      headRef: pr.head.ref,
+      headSha,
+      push: () =>
+        Promise.reject(
+          new Error("This checkout is read-only and cannot push."),
+        ),
+      cleanup: () => rm(dir, { recursive: true, force: true }),
+    };
+  }
+
   const git = simpleGit();
   await git.clone(authenticatedUrl, dir, [
     "--depth",
@@ -144,7 +203,7 @@ export async function checkoutPullRequestHead(
   ]);
 
   const push = await bindPushCredentials(dir, {
-    plainUrl: `https://github.com/${owner}/${repo}.git`,
+    plainUrl,
     authenticatedUrl,
     token,
     ref: pr.head.ref,

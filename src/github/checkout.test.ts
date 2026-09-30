@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   assertSameRepoPullRequest,
   bindPushCredentials,
+  fetchPullRequestHead,
   ForkPullRequestError,
 } from "./checkout.js";
 
@@ -144,5 +145,50 @@ describe("assertSameRepoPullRequest", () => {
     };
 
     expect(() => assertSameRepoPullRequest(pr)).toThrow(ForkPullRequestError);
+  });
+});
+
+describe("fetchPullRequestHead", () => {
+  // A merged PR: its branch is gone from the remote, only refs/pull/N/head is left.
+  async function remoteWithOnlyPullRef(prNumber: number): Promise<string> {
+    const work = await tmp();
+    const git = simpleGit(work);
+    await git.init(false, ["--initial-branch=feature"]);
+    await git.addConfig(...IDENTITY);
+    await git.addConfig("user.email", "t@t");
+    await git.raw(["commit", "--allow-empty", "-m", "the PR change"]);
+    const sha = (await git.revparse(["HEAD"])).trim();
+    await simpleGit(remote).raw([
+      "fetch",
+      work,
+      `feature:refs/pull/${prNumber}/head`,
+    ]);
+    return sha;
+  }
+
+  it("checks out refs/pull/N/head when no branch exists any more", async () => {
+    const sha = await remoteWithOnlyPullRef(7);
+    const dir = await tmp();
+
+    const head = await fetchPullRequestHead(dir, remote, 7);
+
+    expect(head).toBe(sha);
+    expect((await simpleGit(dir).revparse(["HEAD"])).trim()).toBe(sha);
+  });
+
+  it("leaves no remote behind, so no credential can end up in .git/config", async () => {
+    await remoteWithOnlyPullRef(7);
+    const dir = await tmp();
+
+    await fetchPullRequestHead(dir, remote, 7);
+
+    const config = await readFile(join(dir, ".git", "config"), "utf-8");
+    expect(config).not.toContain(remote);
+    expect(await simpleGit(dir).getRemotes()).toHaveLength(0);
+  });
+
+  it("fails clearly when the pull request ref does not exist", async () => {
+    const dir = await tmp();
+    await expect(fetchPullRequestHead(dir, remote, 99)).rejects.toThrow();
   });
 });
