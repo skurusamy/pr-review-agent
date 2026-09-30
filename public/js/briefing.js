@@ -1,12 +1,14 @@
 import { showTabs, selectTab, hideTabs } from "./panelTabs.js";
 import { h, inline, downloadMarkdown } from "./dom.js";
+import { loadMermaid } from "./mermaidLoader.js";
 
 const briefingBox = document.getElementById("briefing");
 
 // Mermaid's own theme follows the page's light/dark scheme; it draws to
 // SVG with fixed colours, so it needs telling rather than inheriting CSS.
+// It is loaded lazily (see mermaidLoader.js), so this runs once it arrives.
 const darkQuery = window.matchMedia("(prefers-color-scheme: dark)");
-function initMermaid() {
+function initMermaid(mermaid) {
   mermaid.initialize({
     startOnLoad: false,
     // Mermaid draws its own "syntax error" graphic (a bomb) for a diagram it
@@ -15,8 +17,14 @@ function initMermaid() {
     theme: darkQuery.matches ? "dark" : "default",
   });
 }
-initMermaid();
-darkQuery.addEventListener("change", initMermaid);
+darkQuery.addEventListener("change", () => {
+  if (window.mermaid) initMermaid(window.mermaid);
+});
+// Start fetching now so the first diagram is usually ready, but never wait on
+// it here: a blocked CDN must not stop the page working.
+loadMermaid()
+  .then(initMermaid)
+  .catch(() => {});
 
 const FILES_OPEN_LIMIT = 10;
 
@@ -90,6 +98,8 @@ function prParts(prUrl) {
 async function diagramView(source) {
   const box = h("div", "diagram");
   try {
+    const mermaid = await loadMermaid();
+    initMermaid(mermaid);
     // Parse first: render() paints Mermaid's error graphic into the page
     // before it throws, so an invalid diagram must be rejected up front.
     await mermaid.parse(source);
@@ -99,8 +109,9 @@ async function diagramView(source) {
     );
     box.innerHTML = svg;
   } catch {
-    // The model produced something that isn't valid Mermaid -- show
-    // its source instead of silently dropping the diagram.
+    // Either the model produced something that isn't valid Mermaid, or
+    // Mermaid itself could not be loaded (a blocked CDN) -- show the
+    // diagram's source instead of silently dropping it.
     document.getElementById(`dbriefing-diagram-${diagramCounter}`)?.remove();
     const pre = h("pre", "");
     pre.textContent = source;
