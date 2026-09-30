@@ -179,7 +179,22 @@ async function blocks(lines) {
         list = h(tag, "");
         out.push(list);
       }
-      list.append(h("li", "", inline(bullet[1])));
+      // A reading-order step is "`path`: why": the path gets its own line.
+      const step = tag === "ol" && bullet[1].match(/^`([^`]+)`:?\s*(.*)$/);
+      list.append(
+        step
+          ? h(
+              "li",
+              "bf-step",
+              h(
+                "div",
+                "bf-step-body",
+                h("code", "bf-step-path", step[1]),
+                step[2] && h("span", "bf-step-why", inline(step[2])),
+              ),
+            )
+          : h("li", "", inline(bullet[1])),
+      );
       continue;
     }
     if (line.trim() === "") {
@@ -237,7 +252,17 @@ async function sectionView(section) {
   const key = section.title.toLowerCase();
   const isRisks = key.startsWith("risks");
   const isFiles = key === "changed files";
-  const el = h("section", `bf-section${isRisks ? " bf-risks" : ""}`);
+  // A class per section, so the style sheet can give each its own look.
+  const kind = isRisks
+    ? " bf-risks"
+    : key === "summary"
+      ? " bf-summary"
+      : key === "how it fits in"
+        ? " bf-fits"
+        : key === "where to start reading"
+          ? " bf-reading"
+          : "";
+  const el = h("section", `bf-section${kind}`);
   if (!isFiles) el.append(h("h3", "", section.title));
   if (isFiles) el.append(filesView(section.lines));
   else el.append(...(await blocks(section.lines)));

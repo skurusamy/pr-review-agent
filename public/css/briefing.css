@@ -1,7 +1,7 @@
 #briefing,
 #code-review {
   margin-top: var(--space-4);
-  line-height: 1.55;
+  line-height: 1.65;
 }
 #briefing[hidden],
 #code-review[hidden] {
@@ -72,6 +72,12 @@
 #briefing p,
 #code-review p {
   margin: var(--space-2) 0;
+  /* Long lines are hard to follow; paragraphs stop at a readable width. */
+  max-width: 75ch;
+}
+#briefing li,
+#code-review li {
+  max-width: 75ch;
 }
 #briefing .muted,
 #code-review .muted {
@@ -94,14 +100,17 @@
 #briefing code,
 #code-review code {
   font-family: var(--font-mono);
-  font-size: 0.9em;
+  font-size: 0.88em;
   background: var(--code-bg);
-  padding: 0 0.25em;
-  border-radius: 3px;
+  border: 1px solid var(--border);
+  padding: 0.05em 0.35em;
+  border-radius: 4px;
+  overflow-wrap: anywhere;
 }
 #briefing pre code,
 #code-review pre code {
   background: none;
+  border: 0;
   padding: 0;
 }
 #briefing .diagram,
@@ -130,6 +139,7 @@
 #briefing .bf-file code,
 #code-review .bf-file code {
   background: none;
+  border: 0;
   padding: 0;
   flex: 1;
   min-width: 0;
@@ -148,4 +158,75 @@
 .bf-del {
   color: var(--danger);
   font-family: var(--font-mono);
+}
+
+/* The summary opens with one sentence that says what the PR does: make it the
+   lead, with the detail in ordinary text below it. */
+.bf-summary {
+  border-left: 4px solid var(--accent);
+}
+.bf-summary p:first-of-type {
+  font-size: 1.08rem;
+  font-weight: 600;
+  line-height: 1.5;
+}
+.bf-fits {
+  border-left: 4px solid var(--border-strong);
+}
+
+/* Reading order: numbered steps, the path on its own line, the reason under it. */
+.bf-reading ol {
+  list-style: none;
+  padding: 0;
+  margin: var(--space-2) 0 0;
+  counter-reset: step;
+}
+#briefing .bf-step {
+  max-width: none;
+  display: grid;
+  grid-template-columns: 1.75rem 1fr;
+  gap: var(--space-3);
+  align-items: start;
+  padding: var(--space-2) 0;
+  border-top: 1px solid var(--border);
+  counter-increment: step;
+}
+.bf-step:first-child {
+  border-top: 0;
+}
+.bf-step::before {
+  content: counter(step);
+  display: inline-grid;
+  place-items: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+.bf-step-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+}
+#briefing .bf-step-path {
+  align-self: flex-start;
+  font-weight: 600;
+}
+.bf-step-why {
+  color: var(--text-muted);
+}
+
+/* Risks: each one is its own item with air around it. */
+.bf-risks ul {
+  padding-left: 1.1rem;
+}
+.bf-risks li {
+  margin: var(--space-2) 0;
+}
+.bf-risks li::marker {
+  color: var(--warning);
 }

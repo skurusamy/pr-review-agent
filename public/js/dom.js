@@ -1,3 +1,5 @@
+import { splitCodeTokens } from "./codeTokens.js";
+
 // Small DOM helpers shared by the Briefing and Code Review panels. Text in
 // those panels comes from PR titles, descriptions, comments and the model's
 // quotes of other people's code, so it is never trusted as HTML: everything
@@ -14,11 +16,17 @@ export function h(tag, className, ...kids) {
   return el;
 }
 
-/** Splits `text` on backticks: odd segments become <code>, the rest stay text. */
+/**
+ * Splits `text` on backticks: odd segments become <code>. The rest is searched
+ * for code-looking words (paths, calls, CONSTANTS, camelCase) that the model
+ * did not put in backticks, and those become <code> too.
+ */
 export function inline(text) {
-  return text.split("`").map((part, i) => {
-    if (i % 2 === 1) return h("code", "", part);
-    return part;
+  return text.split("`").flatMap((part, i) => {
+    if (i % 2 === 1) return [h("code", "", part)];
+    return splitCodeTokens(part).map((p) =>
+      p.code ? h("code", "", p.text) : p.text,
+    );
   });
 }
 
