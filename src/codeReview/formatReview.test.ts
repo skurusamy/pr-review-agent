@@ -133,3 +133,21 @@ describe("formatCodeReviewMarkdown after the verify pass", () => {
     );
   });
 });
+
+describe("formatCodeReviewMarkdown with a suggested change", () => {
+  it("shows the replacement as a plain code block with its line range", () => {
+    const md = render(
+      makeReview({
+        findings: [
+          {
+            ...finding,
+            line: 12,
+            suggestion: { startLine: 11, replacement: "a();\nb();" },
+          },
+        ],
+      }),
+    );
+    expect(md).toContain("Suggested change (lines 11-12):");
+    expect(md).toContain("```\na();\nb();\n```");
+  });
+});

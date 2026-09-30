@@ -266,6 +266,7 @@ app.post("/review/post", async (req, res) => {
       url: result.url,
       reviewId: result.reviewId,
       commentCount: result.commentCount,
+      alreadyPosted: result.alreadyPosted,
     });
   } catch (error) {
     res.status(500).json({ error: formatError(error) });

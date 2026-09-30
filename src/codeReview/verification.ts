@@ -20,12 +20,18 @@ export interface Verification {
   status: VerificationStatus;
   /** What the check looked at, in its own words. */
   evidence: string;
+  /**
+   * Only when the finding came with a suggested change: whether the check
+   * judged that change correct. Anything but `true` keeps it out of the posted comment.
+   */
+  suggestionOk?: boolean;
 }
 
 /** The shape a Verification has when it comes back from the browser. */
 export const verificationSchema = z.object({
   status: z.enum(VERIFICATION_STATUSES),
   evidence: z.string(),
+  suggestionOk: z.boolean().optional(),
 });
 
 /**

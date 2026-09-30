@@ -8,6 +8,7 @@ import {
   type PostableReview,
 } from "./postReview.js";
 import type { Finding } from "./generateReview.js";
+import { findingMarker } from "./suggestion.js";
 
 function finding(overrides: Partial<Finding> = {}): Finding {
   return {
@@ -32,20 +33,29 @@ const review: PostableReview = {
 };
 
 /** A fake Octokit recording createReview, with configurable existing reviews. */
-function fakeOctokit(existingReviews: unknown[] = []) {
+function fakeOctokit(
+  existingReviews: unknown[] = [],
+  submittedComments: { body: string }[] = [],
+) {
   const createReview = vi.fn().mockResolvedValue({
     data: {
       id: 99,
       html_url: "https://github.com/acme/widgets/pull/7#pullrequestreview-99",
     },
   });
+  const listReviewComments = vi.fn();
   const octokit = {
-    paginate: vi.fn().mockResolvedValue(existingReviews),
+    // One mock for every paginated endpoint, told apart by which one it was asked for.
+    paginate: vi.fn((endpoint: unknown) =>
+      Promise.resolve(
+        endpoint === listReviewComments ? submittedComments : existingReviews,
+      ),
+    ),
     rest: {
       users: {
         getAuthenticated: vi.fn().mockResolvedValue({ data: { login: "me" } }),
       },
-      pulls: { listReviews: vi.fn(), createReview },
+      pulls: { listReviews: vi.fn(), listReviewComments, createReview },
     },
   };
   return { octokit: octokit as unknown as Octokit, createReview };
@@ -59,7 +69,7 @@ describe("buildReviewComments", () => {
       path: "src/page.ts",
       line: 11,
       side: "RIGHT",
-      body: "**[HIGH] Drops the last page** · correctness\n\nThe loop bound is exclusive.",
+      body: `**[HIGH] Drops the last page** · correctness\n\nThe loop bound is exclusive.\n\n${findingMarker(review.findings[0]!)}`,
     });
     expect(comments[1]).toMatchObject({ path: "src/b.ts", line: 3 });
   });
@@ -108,6 +118,7 @@ describe("postCodeReviewAsPending", () => {
       reviewId: 99,
       url: "https://github.com/acme/widgets/pull/7#pullrequestreview-99",
       commentCount: 2,
+      alreadyPosted: 0,
     });
     const args = createReview.mock.calls[0]![0];
     expect(args).toMatchObject({
@@ -245,5 +256,120 @@ describe("posting after the verify pass", () => {
       ],
     });
     expect(bad.success).toBe(false);
+  });
+});
+
+describe("suggested changes in posted comments", () => {
+  const withSuggestion = (over: Partial<Finding> = {}): Finding =>
+    finding({
+      line: 12,
+      suggestion: { startLine: 11, replacement: "const x = 1;\nreturn x;" },
+      ...over,
+    });
+
+  it("spans the replaced lines and ends with a suggestion block, then the marker", () => {
+    const [comment] = buildReviewComments([withSuggestion()]);
+    expect(comment).toMatchObject({
+      start_line: 11,
+      start_side: "RIGHT",
+      line: 12,
+    });
+    expect(comment?.body).toContain(
+      "```suggestion\nconst x = 1;\nreturn x;\n```",
+    );
+    expect(comment?.body.trim().endsWith("-->")).toBe(true);
+  });
+
+  it("uses a single-line comment when the fix replaces one line", () => {
+    const [comment] = buildReviewComments([
+      withSuggestion({ suggestion: { replacement: "fixed();" } }),
+    ]);
+    expect(comment).not.toHaveProperty("start_line");
+    expect(comment?.body).toContain("```suggestion\nfixed();\n```");
+  });
+
+  it("keeps a suggestion out when the check did not judge it correct, but still posts the finding", () => {
+    const [bad] = buildReviewComments([
+      withSuggestion({
+        verification: {
+          status: "confirmed",
+          evidence: "e",
+          suggestionOk: false,
+        },
+      }),
+    ]);
+    expect(bad?.body).not.toContain("suggestion");
+    expect(bad).not.toHaveProperty("start_line");
+    const [missing] = buildReviewComments([
+      withSuggestion({ verification: { status: "confirmed", evidence: "e" } }),
+    ]);
+    expect(missing?.body).not.toContain("```suggestion");
+    const [good] = buildReviewComments([
+      withSuggestion({
+        verification: {
+          status: "confirmed",
+          evidence: "e",
+          suggestionOk: true,
+        },
+      }),
+    ]);
+    expect(good?.body).toContain("```suggestion");
+  });
+
+  it("accepts a suggestion from the browser and rejects a blank one", () => {
+    expect(
+      postableReviewSchema.safeParse({
+        ...review,
+        findings: [withSuggestion()],
+      }).success,
+    ).toBe(true);
+    expect(
+      postableReviewSchema.safeParse({
+        ...review,
+        findings: [withSuggestion({ suggestion: { replacement: "  " } })],
+      }).success,
+    ).toBe(false);
+  });
+});
+
+describe("posting twice", () => {
+  it("leaves out a finding whose marker is already on a submitted comment", async () => {
+    const posted = finding({ title: "Drops the last page" });
+    const other = finding({ title: "Something else", line: 30 });
+    const { octokit, createReview } = fakeOctokit(
+      [],
+      [{ body: `earlier\n\n${findingMarker(posted)}` }],
+    );
+
+    const result = await postCodeReviewAsPending(
+      octokit,
+      "acme",
+      "widgets",
+      7,
+      { ...review, findings: [posted, other] },
+      "abc1234",
+    );
+
+    expect(createReview.mock.calls[0]![0].comments).toHaveLength(1);
+    expect(createReview.mock.calls[0]![0].comments[0].body).toContain(
+      "Something else",
+    );
+    expect(result).toMatchObject({ commentCount: 1, alreadyPosted: 1 });
+  });
+
+  it("does not count a not-confirmed finding as already posted", async () => {
+    const maybe = finding({
+      verification: { status: "unsure", evidence: "e" },
+    });
+    const { octokit } = fakeOctokit([], [{ body: findingMarker(maybe) }]);
+    const result = await postCodeReviewAsPending(
+      octokit,
+      "acme",
+      "widgets",
+      7,
+      { ...review, findings: [maybe] },
+      "abc1234",
+    );
+    expect(result).toMatchObject({ commentCount: 0, alreadyPosted: 0 });
   });
 });

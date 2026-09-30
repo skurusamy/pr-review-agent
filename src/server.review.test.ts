@@ -195,6 +195,7 @@ describe("POST /review/post", () => {
       reviewId: 99,
       url: "https://github.com/acme/widgets/pull/7#pullrequestreview-99",
       commentCount: 1,
+      alreadyPosted: 0,
     });
 
     const response = await postReview(payload);
@@ -203,6 +204,7 @@ describe("POST /review/post", () => {
       url: "https://github.com/acme/widgets/pull/7#pullrequestreview-99",
       reviewId: 99,
       commentCount: 1,
+      alreadyPosted: 0,
     });
 
     const args = vi.mocked(postCodeReviewAsPending).mock.calls[0]!;

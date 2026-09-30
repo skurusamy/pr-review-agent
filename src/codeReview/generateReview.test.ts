@@ -3,6 +3,7 @@ import { createSdkMcpServer } from "@anthropic-ai/claude-agent-sdk";
 import {
   buildReviewPrompt,
   buildReviewQueryOptions,
+  findingSchema,
   partitionFindings,
   type Finding,
 } from "./generateReview.js";
@@ -146,6 +147,35 @@ describe("buildReviewPrompt", () => {
   });
 });
 
+describe("the review prompt and suggestions", () => {
+  const prompt = buildReviewPrompt(makeContext(), [], "", []);
+  it("asks for one finding for a repeated problem, and suggestions only for small exact fixes", () => {
+    expect(prompt).toContain("report it once, on the first line");
+    expect(prompt).toContain(
+      "Offer a suggestion only when the fix is small and exact",
+    );
+  });
+  it("lets the model attach a suggestion but not a verification", () => {
+    expect(
+      findingSchema.safeParse({
+        ...finding(),
+        suggestion: { replacement: "x" },
+      }).success,
+    ).toBe(true);
+    expect(
+      findingSchema.safeParse({
+        ...finding(),
+        suggestion: { replacement: " " },
+      }).success,
+    ).toBe(false);
+    const parsed = findingSchema.parse({
+      ...finding(),
+      verification: { status: "confirmed", evidence: "fake" },
+    });
+    expect(parsed).not.toHaveProperty("verification");
+  });
+});
+
 describe("partitionFindings", () => {
   const diff = `diff --git a/src/page.ts b/src/page.ts
 --- a/src/page.ts
@@ -167,6 +197,21 @@ describe("partitionFindings", () => {
     const result = partitionFindings([finding({ line: 200 })], index);
     expect(result.findings).toHaveLength(0);
     expect(result.unanchored).toEqual([finding({ line: 200 })]);
+  });
+
+  it("keeps a usable suggestion, and drops only the suggestion when it cannot be applied", () => {
+    const ok = partitionFindings(
+      [finding({ line: 11, suggestion: { replacement: "x" } })],
+      index,
+    );
+    expect(ok.findings[0]?.suggestion).toEqual({ replacement: "x" });
+
+    const bad = partitionFindings(
+      [finding({ line: 11, suggestion: { startLine: 3, replacement: "x" } })],
+      index,
+    );
+    expect(bad.findings).toHaveLength(1);
+    expect(bad.findings[0]?.suggestion).toBeUndefined();
   });
 
   it("demotes a finding in a file the diff does not touch", () => {

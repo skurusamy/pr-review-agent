@@ -52,9 +52,12 @@ export async function postReview(
 
 /** What to tell the person after `postReview`. */
 export function describePostedReview(result: PostReviewResult): string {
-  return result.created
-    ? `Created a pending review (id ${result.reviewId}) with ${result.commentCount} comment(s): ${result.url}\nSubmit it on GitHub when ready.`
-    : PENDING_REVIEW_EXISTS_MESSAGE;
+  if (!result.created) return PENDING_REVIEW_EXISTS_MESSAGE;
+  const skipped =
+    result.alreadyPosted > 0
+      ? ` (${result.alreadyPosted} finding(s) left out because an earlier run already posted them)`
+      : "";
+  return `Created a pending review (id ${result.reviewId}) with ${result.commentCount} comment(s)${skipped}: ${result.url}\nSubmit it on GitHub when ready.`;
 }
 
 /** Where the CLI saves a generated briefing or review. */

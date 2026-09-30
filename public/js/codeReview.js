@@ -85,6 +85,19 @@ function findingCard(f) {
       h("span", "cr-category", f.category),
     ),
     h("div", "cr-body", prose(f.explanation)),
+    f.suggestion &&
+      h(
+        "div",
+        "cr-suggestion",
+        h(
+          "p",
+          "muted",
+          f.suggestion.startLine && f.suggestion.startLine < f.line
+            ? `Suggested change (lines ${f.suggestion.startLine}-${f.line}):`
+            : `Suggested change (line ${f.line}):`,
+        ),
+        h("pre", "", f.suggestion.replacement),
+      ),
     f.verification &&
       h(
         "p",
@@ -164,7 +177,7 @@ function actions(parts, data) {
         link.target = "_blank";
         link.rel = "noopener";
         status.replaceChildren(
-          `Created a pending review with ${result.commentCount} comment(s). Submit it on GitHub when ready: `,
+          `Created a pending review with ${result.commentCount} comment(s)${result.alreadyPosted > 0 ? ` (${result.alreadyPosted} already posted by an earlier run, left out)` : ""}. Submit it on GitHub when ready: `,
           link,
         );
         // A second click would only be refused (one pending review per PR).
