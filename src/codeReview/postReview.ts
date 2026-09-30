@@ -9,6 +9,18 @@ import {
   type CodeReview,
   type Finding,
 } from "./generateReview.js";
+import {
+  describeVerification,
+  isDismissed,
+  postsInline,
+  verificationSchema,
+} from "./verification.js";
+
+// A finding that comes back from the browser may carry what the verify pass
+// concluded; the model's own schema (findingSchema) must not allow it.
+const postableFindingSchema = findingSchema.extend({
+  verification: verificationSchema.optional(),
+});
 
 /**
  * The part of a Code Review that posting needs. Also the shape the server
@@ -17,8 +29,8 @@ import {
  */
 export const postableReviewSchema = z.object({
   assessment: z.string(),
-  findings: z.array(findingSchema),
-  unanchored: z.array(findingSchema),
+  findings: z.array(postableFindingSchema),
+  unanchored: z.array(postableFindingSchema),
   skippedFiles: z.array(
     z.object({ path: z.string(), reason: z.enum(["lockfile", "too-large"]) }),
   ),
@@ -40,11 +52,15 @@ function formatFindingHeading(f: Finding): string {
   return `**[${f.severity.toUpperCase()}] ${f.title}** · ${f.category}`;
 }
 
-/** One inline comment per anchored Finding. */
+/**
+ * One inline comment per anchored Finding that is confirmed (or was never
+ * put through the verify pass). Not-confirmed and dismissed ones stay out of
+ * the PR's inline comments; buildReviewBody says what was left out.
+ */
 export function buildReviewComments(
   findings: Finding[],
 ): { path: string; line: number; side: "RIGHT"; body: string }[] {
-  return findings.map((f) => ({
+  return findings.filter(postsInline).map((f) => ({
     path: f.path,
     line: f.line,
     // Anchors are new-side lines (added or unchanged), never deletions.
@@ -61,8 +77,28 @@ export function buildReviewComments(
 export function buildReviewBody(review: PostableReview): string {
   const parts = [DRAFT_NOTE, `## Assessment\n\n${review.assessment}`];
 
-  if (review.unanchored.length > 0) {
-    const items = review.unanchored
+  const offDiff = review.unanchored.filter((f) => !isDismissed(f));
+  const notConfirmed = review.findings.filter(
+    (f) => !postsInline(f) && !isDismissed(f),
+  );
+  const dismissedCount = [...review.findings, ...review.unanchored].filter(
+    isDismissed,
+  ).length;
+
+  if (notConfirmed.length > 0) {
+    const items = notConfirmed
+      .map(
+        (f) =>
+          `- ${formatFindingHeading(f)} (\`${f.path}:${f.line}\`)\n\n  ${f.explanation.replace(/\n/g, "\n  ")}\n\n  _${f.verification ? describeVerification(f.verification) : ""}_`,
+      )
+      .join("\n\n");
+    parts.push(
+      `## Not confirmed\n\nThe second check could not confirm these, so they are here rather than inline.\n\n${items}`,
+    );
+  }
+
+  if (offDiff.length > 0) {
+    const items = offDiff
       .map(
         (f) =>
           `- ${formatFindingHeading(f)} (\`${f.path}:${f.line}\`)\n\n  ${f.explanation.replace(/\n/g, "\n  ")}`,
@@ -70,6 +106,12 @@ export function buildReviewBody(review: PostableReview): string {
       .join("\n\n");
     parts.push(
       `## Findings not anchored to the diff\n\nThese name a line that is not part of the diff, so they are here rather than inline.\n\n${items}`,
+    );
+  }
+
+  if (dismissedCount > 0) {
+    parts.push(
+      `${dismissedCount} finding(s) were checked a second time and dismissed, so they are not posted.`,
     );
   }
 

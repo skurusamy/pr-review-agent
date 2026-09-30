@@ -1,12 +1,16 @@
 import { formatChangedFilesTree } from "../briefing/changedFilesTree.js";
 import type { CodeReview, Finding } from "./generateReview.js";
+import { describeVerification, isDismissed } from "./verification.js";
 
 function formatFinding(f: Finding): string {
+  const check = f.verification
+    ? `\n\n_${describeVerification(f.verification)}_`
+    : "";
   return `### [${f.severity.toUpperCase()}] ${f.title}
 
 \`${f.path}:${f.line}\` · ${f.category}
 
-${f.explanation}`;
+${f.explanation}${check}`;
 }
 
 /**
@@ -19,14 +23,25 @@ export function formatCodeReviewMarkdown(
   prUrl: string,
   review: CodeReview,
 ): string {
+  const standing = review.findings.filter((f) => !isDismissed(f));
+  const standingOffDiff = review.unanchored.filter((f) => !isDismissed(f));
+  const dismissed = [...review.findings, ...review.unanchored].filter(
+    isDismissed,
+  );
+
   const findings =
-    review.findings.length > 0
-      ? review.findings.map(formatFinding).join("\n\n")
+    standing.length > 0
+      ? standing.map(formatFinding).join("\n\n")
       : "_No findings the reviewer would stand behind._";
 
   const unanchored =
-    review.unanchored.length > 0
-      ? `\n\n## Findings not anchored to the diff\n\nThese name a line that is not part of the diff, so they can't be posted as inline comments.\n\n${review.unanchored.map(formatFinding).join("\n\n")}`
+    standingOffDiff.length > 0
+      ? `\n\n## Findings not anchored to the diff\n\nThese name a line that is not part of the diff, so they can't be posted as inline comments.\n\n${standingOffDiff.map(formatFinding).join("\n\n")}`
+      : "";
+
+  const dismissedSection =
+    dismissed.length > 0
+      ? `\n\n## Checked and dismissed (${dismissed.length})\n\nThe review raised these, but a second check found they do not hold. They are listed so nothing is hidden.\n\n${dismissed.map(formatFinding).join("\n\n")}`
       : "";
 
   const skipped =
@@ -53,8 +68,8 @@ ${review.assessment}${linked}
 ${formatChangedFilesTree(review.changedFiles)}
 \`\`\`
 
-## Findings (${review.findings.length})
+## Findings (${standing.length})
 
-${findings}${unanchored}${skipped}
+${findings}${unanchored}${dismissedSection}${skipped}
 `;
 }

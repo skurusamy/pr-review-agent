@@ -25,6 +25,7 @@ import {
   type AnchorIndex,
 } from "./diffLines.js";
 import { selectDiffForReview, type SkippedFile } from "./selectDiff.js";
+import type { Verification } from "./verification.js";
 import {
   isMaxTurnsError,
   lockedDown,
@@ -51,6 +52,8 @@ export interface Finding {
   category: FindingCategory;
   title: string;
   explanation: string;
+  /** Set by the verify pass after the review; never by the review session itself. */
+  verification?: Verification;
 }
 
 export interface CodeReview {

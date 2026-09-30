@@ -92,3 +92,44 @@ describe("formatCodeReviewMarkdown", () => {
     expect(md).toContain("`package-lock.json` (lockfile)");
   });
 });
+
+describe("formatCodeReviewMarkdown after the verify pass", () => {
+  const checked = (
+    status: "confirmed" | "refuted" | "unsure",
+    title: string,
+  ) => ({
+    ...finding,
+    title,
+    verification: { status, evidence: `evidence for ${title}` },
+  });
+
+  it("says what the second check found under each finding", () => {
+    const md = render(makeReview({ findings: [checked("confirmed", "Real")] }));
+    expect(md).toContain("Confirmed by a second check: evidence for Real");
+  });
+
+  it("moves dismissed findings to their own section and leaves them out of the count", () => {
+    const md = render(
+      makeReview({
+        findings: [checked("confirmed", "Real"), checked("refuted", "Wrong")],
+      }),
+    );
+    expect(md).toContain("## Findings (1)");
+    expect(md).toContain("## Checked and dismissed (1)");
+    expect(md.indexOf("Wrong")).toBeGreaterThan(
+      md.indexOf("## Checked and dismissed"),
+    );
+  });
+
+  it("keeps a not-confirmed finding visible and says so", () => {
+    const md = render(makeReview({ findings: [checked("unsure", "Maybe")] }));
+    expect(md).toContain("## Findings (1)");
+    expect(md).toContain("Not confirmed: the second check could not decide");
+  });
+
+  it("shows no dismissed section when nothing was dismissed", () => {
+    expect(render(makeReview({ findings: [finding] }))).not.toContain(
+      "Checked and dismissed",
+    );
+  });
+});
