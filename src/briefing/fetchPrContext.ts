@@ -27,14 +27,14 @@ export interface PrContext {
   baseSha?: string;
   /**
    * Same-repo issues the title/description point at. Filled in by the caller
-   * that wants them (Brief PR); left out here so a Code Review or Fix Run
+   * that wants them (the briefing and the review); left out here so a Code Review or Fix Run
    * doesn't pay for lookups it won't use.
    */
   linkedIssues?: LinkedIssue[];
   /**
    * The inline review threads already on the PR, with their resolved state.
-   * Filled in by the caller that wants them (Review PR), so Brief PR doesn't
-   * pay for a lookup it won't use.
+   * Filled in by the caller that wants them (the review), so the briefing
+   * on its own doesn't pay for a lookup it won't use.
    */
   reviewThreads?: ReviewThread[];
   /**
@@ -69,8 +69,8 @@ export async function fetchPrConversation(
 /**
  * Everything a PR Briefing needs, and nothing a Fix Run's checkout would
  * otherwise provide -- no local clone here. Title/description/conversation
- * ground the model's summary in what the PR *claims* to do, so it can flag
- * where the diff drifts from that; the diff itself is what actually changed.
+ * ground the model's summary in what the PR *claims* to do, so it can state
+ * what the PR claims (judging the drift is the review's job); the diff itself is what actually changed.
  */
 export async function fetchPrContext(
   octokit: Octokit,
