@@ -94,7 +94,8 @@ describe("buildBriefingPrompt", () => {
       "#12 [issue, open] Pagination drops the last page",
     );
     expect(prompt).toContain("Page 5 of 5 never shows.");
-    expect(prompt).toContain("whether the diff appears to deliver it");
+    expect(prompt).toContain("what the issue asks for, as its claim");
+    expect(prompt).not.toContain("whether the diff appears to deliver it");
   });
 
   it("does not mention issues at all when there are none", () => {

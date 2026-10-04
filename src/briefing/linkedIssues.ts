@@ -136,7 +136,7 @@ export async function fetchLinkedIssues(
 }
 
 /**
- * The issues the PR's title and description point at. Brief PR and Review PR
+ * The issues the PR's title and description point at. The briefing and the review
  * both call this, so "which text is searched" is decided in one place.
  */
 export function fetchLinkedIssuesOfPr(
