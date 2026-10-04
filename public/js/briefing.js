@@ -1,4 +1,3 @@
-import { showTabs, selectTab, hideTabs } from "./panelTabs.js";
 import { h, inline, downloadMarkdown } from "./dom.js";
 import { loadMermaid } from "./mermaidLoader.js";
 
@@ -28,30 +27,36 @@ loadMermaid()
 
 const FILES_OPEN_LIMIT = 10;
 
-// The one PR Briefing currently on screen -- what "Download .md" and
-// "Post to GitHub" act on. Generating a new Briefing (or running a
-// review) clears it, since posting a stale one for a different PR
-// would be a real bug, not just a stale UI.
+// The one PR Briefing currently on screen -- what "Download .md" acts on. A
+// briefing is never posted to GitHub. Starting another run clears it.
 let currentBriefing = null;
 let diagramCounter = 0;
 
-/** Called as generation starts: the tabs appear on the log while it runs. */
-export function startBriefing() {
-  showTabs("Briefing", briefingBox, "log");
-}
-
 export function clearBriefing() {
-  hideTabs();
   briefingBox.textContent = "";
+  briefingBox.hidden = true;
   currentBriefing = null;
 }
 
+/**
+ * Draws the briefing. The caller has already made the panel visible: Mermaid
+ * measures text in the DOM, so a diagram drawn into a hidden panel comes out
+ * empty.
+ */
 export async function showBriefing(markdown) {
   currentBriefing = markdown;
-  // Before rendering, not after: Mermaid measures text in the DOM, so a
-  // diagram drawn into a hidden panel comes out empty.
-  selectTab("summary");
+  briefingBox.hidden = false;
   await renderBriefing(markdown);
+}
+
+/** The briefing failed twice; the review goes on without it. */
+export function showBriefingError(message) {
+  currentBriefing = null;
+  briefingBox.hidden = false;
+  briefingBox.replaceChildren(
+    h("p", "muted", `The briefing could not be written: ${message}`),
+    h("p", "muted", "The code review below ran without it."),
+  );
 }
 
 // ---- Parsing: the Markdown stays canonical (Download and Post use it
@@ -272,7 +277,6 @@ async function sectionView(section) {
 function actionsView(prUrl) {
   const parts = prParts(prUrl);
   const box = h("div", "bf-actions");
-  const status = h("span", "bf-status");
 
   const download = h("button", "secondary", "Download .md");
   download.type = "button";
@@ -285,53 +289,7 @@ function actionsView(prUrl) {
       currentBriefing,
     );
   });
-
-  // Posting is a visible write to the PR, so it takes a second, explicit
-  // click. The PR comes from the Briefing itself, not the page's input,
-  // which may have been edited since it was generated.
-  const post = h("button", "secondary", "Post to GitHub");
-  post.type = "button";
-  post.disabled = !parts;
-  const idle = () => {
-    box.replaceChildren(download, post, status);
-  };
-  post.addEventListener("click", () => {
-    const confirm = h("button", "", "Confirm");
-    confirm.type = "button";
-    const cancel = h("button", "secondary", "Cancel");
-    cancel.type = "button";
-    cancel.addEventListener("click", () => {
-      status.textContent = "";
-      idle();
-    });
-    confirm.addEventListener("click", async () => {
-      confirm.disabled = cancel.disabled = true;
-      status.textContent = "Posting...";
-      try {
-        const response = await fetch("/brief/post", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ prUrl, markdown: currentBriefing }),
-        });
-        const data = await response.json();
-        if (!response.ok) {
-          throw new Error(data.error ?? `Request failed (${response.status})`);
-        }
-        const link = h("a", "", data.url);
-        link.href = data.url;
-        link.target = "_blank";
-        link.rel = "noopener";
-        status.replaceChildren("Posted: ", link);
-        idle();
-      } catch (err) {
-        status.textContent = err instanceof Error ? err.message : String(err);
-        idle();
-      }
-    });
-    status.textContent = `Post this comment to ${parts.owner}/${parts.repo}#${parts.number}?`;
-    box.replaceChildren(status, confirm, cancel);
-  });
-  idle();
+  box.append(download);
   return box;
 }
 

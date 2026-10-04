@@ -7,7 +7,6 @@ import {
   buildDeeperBriefingQueryOptions,
   generateBriefing,
   parseBriefingInput,
-  parseBriefMode,
 } from "./generateBriefing.js";
 import type { PrContext } from "./fetchPrContext.js";
 
@@ -188,17 +187,6 @@ describe("the deeper briefing", () => {
     expect(options.env).not.toHaveProperty("GITHUB_TOKEN");
     expect(options.maxTurns).toBeGreaterThan(4);
     expect(options.maxTurns).toBeLessThan(24);
-  });
-
-  it.each([
-    ["quick", "quick"],
-    ["deeper", "deeper"],
-    ["Deeper", undefined],
-    ["", undefined],
-    [undefined, undefined],
-    [1, undefined],
-  ])("parseBriefMode(%j) is %j", (value, expected) => {
-    expect(parseBriefMode(value)).toBe(expected);
   });
 });
 

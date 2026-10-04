@@ -2,16 +2,18 @@ export function isAbortError(err) {
   return err instanceof DOMException && err.name === "AbortError";
 }
 
-// Shared by /fix, /brief and /review: both stream newline-delimited JSON,
-// one object per log line, so progress shows up live instead of only
-// after the whole request finishes. /brief also sends one
-// {kind: "result"} line carrying the rendered Markdown -- everything
-// else is a progress line for onLine to render.
+// Shared by /fix and /review: both stream newline-delimited JSON, one object
+// per log line, so progress shows up live instead of only after the whole
+// request finishes. /review also sends one {kind: "result"} line carrying the
+// Code Review's Markdown -- everything else is a progress line for onLine to
+// render.
 //
 // It also carries {kind: "run", text: <run id>} once at the start and, for
-// /fix, {kind: "event", event: <FixEvent>} lines; /review sends one
-// {kind: "data", data: <the structured review>} line. All go to the
-// optional handlers and are otherwise ignored. {kind: "step"} lines drive
+// /fix, {kind: "event", event: <FixEvent>} lines. /review sends
+// {kind: "briefing", text: <Markdown>} (or {kind: "briefing-error"}) as soon
+// as the briefing is done, then {kind: "data", data: <the structured review>}
+// lines: first with every finding unchecked, then the checked one. All go to
+// the optional handlers and are otherwise ignored. {kind: "step"} lines drive
 // the Agent activity checklist.
 export async function streamRequest(url, body, onLine, signal, handlers = {}) {
   const response = await fetch(url, {
@@ -55,6 +57,14 @@ export async function streamRequest(url, body, onLine, signal, handlers = {}) {
       }
       if (entry.kind === "data") {
         handlers.onData?.(entry.data);
+        continue;
+      }
+      if (entry.kind === "briefing") {
+        handlers.onBriefing?.(entry.text);
+        continue;
+      }
+      if (entry.kind === "briefing-error") {
+        handlers.onBriefingFailed?.(entry.text);
         continue;
       }
       if (entry.kind === "error") throw new Error(entry.text);

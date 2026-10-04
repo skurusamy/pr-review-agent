@@ -47,7 +47,6 @@ describe("parseArgs", () => {
       owner: "skurusamy",
       repo: "pr-review-agent",
       prNumber: 10,
-      post: false,
       deeper: false,
     });
   });
@@ -60,15 +59,10 @@ describe("parseArgs", () => {
     );
   });
 
-  it("recognizes --post on the brief command", () => {
-    const args = parseArgs([
-      "brief",
-      "skurusamy/pr-review-agent",
-      "10",
-      "--post",
-    ]);
-    expect(args.command).toBe("brief");
-    expect(args.command === "brief" && args.post).toBe(true);
+  it("refuses --post on the brief command, since a briefing is never posted", () => {
+    expect(() =>
+      parseArgs(["brief", "skurusamy/pr-review-agent", "10", "--post"]),
+    ).toThrow(/never posted/);
   });
 
   it("parses a review command", () => {

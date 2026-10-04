@@ -1,4 +1,3 @@
-import { showTabs, selectTab, hideTabs } from "./panelTabs.js";
 import { h, inline, downloadMarkdown } from "./dom.js";
 
 const box = document.getElementById("code-review");
@@ -8,26 +7,31 @@ const box = document.getElementById("code-review");
 // Starting any other run clears it.
 let current = null;
 
-/** Called as the review starts: the tabs appear on the log while it runs. */
-export function startCodeReview() {
-  showTabs("Code Review", box, "log");
-}
-
 export function clearCodeReview() {
-  hideTabs();
   box.textContent = "";
+  box.hidden = true;
   current = null;
 }
 
+/** The briefing is on screen and the review is still being written. */
+export function showReviewPending(text) {
+  box.hidden = false;
+  box.replaceChildren(h("p", "muted", text));
+}
+
 /**
- * Renders a finished review. `data` is the structured {title, prUrl, review}
- * the server streams; `markdown` is the same review as text, kept verbatim for
+ * Renders a review. `data` is the structured {title, prUrl, review} the
+ * server streams; `markdown` is the same review as text, kept verbatim for
  * the download so the file and the CLI output never differ from each other.
+ *
+ * `markdown` is absent while the Findings are still being checked (they arrive
+ * first, all marked "Not checked", so a Stop keeps them). Until then there is
+ * no download and no posting; `stopped` brings posting back for what is there.
  */
-export function showCodeReview(data, markdown) {
+export function showCodeReview(data, markdown, { stopped = false } = {}) {
   current = { data, markdown };
-  selectTab("summary");
-  render(data);
+  box.hidden = false;
+  render(data, { checking: !markdown && !stopped, stopped });
 }
 
 function prParts(prUrl) {
@@ -111,15 +115,17 @@ function section(title, ...kids) {
   return h("section", "bf-section", h("h3", "", title), kids);
 }
 
-function actions(parts, data) {
+function actions(parts, data, { checking }) {
   const { prUrl, headSha, review } = data;
   const box = h("div", "bf-actions");
   const status = h("span", "bf-status");
 
   const download = h("button", "secondary", "Download .md");
   download.type = "button";
+  // The file is the finished review; before that there is nothing to save.
+  download.disabled = !current?.markdown;
   download.addEventListener("click", () => {
-    if (!current) return;
+    if (!current?.markdown) return;
     downloadMarkdown(
       parts
         ? `code-review-${parts.owner}-${parts.repo}-${parts.number}.md`
@@ -134,7 +140,7 @@ function actions(parts, data) {
   // been edited since it was generated.
   const post = h("button", "secondary", "Post to GitHub");
   post.type = "button";
-  post.disabled = !parts || !headSha;
+  post.disabled = !parts || !headSha || checking;
   const idle = (withPost = true) => {
     box.replaceChildren(download, ...(withPost ? [post] : []), status);
   };
@@ -196,20 +202,12 @@ function actions(parts, data) {
   return box;
 }
 
-function render(data) {
-  const { title, prUrl, review } = data;
+function render(data, state) {
+  const { prUrl, review } = data;
   const parts = prParts(prUrl);
 
-  const heading = h("h2", "");
-  if (prUrl) {
-    const link = h("a", "", inline(title));
-    link.href = prUrl;
-    link.target = "_blank";
-    link.rel = "noopener";
-    heading.append(link);
-  } else {
-    heading.append(...inline(title));
-  }
+  // The briefing above already carries the PR's title and link.
+  const heading = h("h2", "", "Code review");
 
   // Dismissed findings stay on screen, but in their own section, not among
   // the findings the reviewer stands behind.
@@ -229,11 +227,29 @@ function render(data) {
       parts &&
         h("span", "bf-sub", `${parts.owner}/${parts.repo}#${parts.number}`),
     ),
-    actions(parts, data),
+    actions(parts, data, state),
   );
 
   box.textContent = "";
-  box.append(header, section("Assessment", prose(review.assessment)));
+  box.append(header);
+  if (state.checking) {
+    box.append(
+      h(
+        "p",
+        "muted",
+        "The review is written. Each finding is now being checked a second time; they show as not checked until then.",
+      ),
+    );
+  } else if (state.stopped) {
+    box.append(
+      h(
+        "p",
+        "muted",
+        "Stopped before the second check finished. These findings are shown as not checked, so a posted review would carry them in its text and none as inline comments.",
+      ),
+    );
+  }
+  box.append(section("Assessment", prose(review.assessment)));
 
   box.append(
     section(

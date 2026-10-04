@@ -4,31 +4,16 @@ import {
   type PostableReview,
   type PostReviewResult,
 } from "./codeReview/postReview.js";
-import { postBriefingComment } from "./briefing/postBriefingComment.js";
 import { PENDING_REVIEW_EXISTS_MESSAGE } from "./draft/replyLedger.js";
 import type { PrReference } from "./prUrl.js";
 
 /**
- * The "post it" half of Brief PR and Review PR, shared by the CLI and the web
- * UI so both do the same thing and say the same thing. Posting is always a
- * separate, explicit step from generating; these are only called when a person
- * asked for it (`--post`, "Post to GitHub").
+ * The "post it" half of Review PR, shared by the CLI and the web UI so both do
+ * the same thing and say the same thing. Posting is always a separate,
+ * explicit step from generating; this is only called when a person asked for
+ * it (`--post`, "Post to GitHub"). Only the Code Review is ever posted: a
+ * briefing is not.
  */
-
-/** Adds the briefing to the PR as one top-level comment. */
-export async function postBriefing(
-  githubToken: string,
-  pr: PrReference,
-  markdown: string,
-): Promise<{ url: string }> {
-  return postBriefingComment(
-    createOctokit(githubToken),
-    pr.owner,
-    pr.repo,
-    pr.prNumber,
-    markdown,
-  );
-}
 
 /**
  * Creates a PENDING review holding the Findings: private to the person until

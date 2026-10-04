@@ -12,7 +12,6 @@ export interface BriefCommandArgs {
   owner: string;
   repo: string;
   prNumber: number;
-  post: boolean;
   /** Also read the code in a read-only checkout (slower, costs more). */
   deeper: boolean;
 }
@@ -28,7 +27,7 @@ export interface ReviewCommandArgs {
 export type CliArgs = FixCommandArgs | BriefCommandArgs | ReviewCommandArgs;
 
 const USAGE = [
-  "Usage: pr-review-agent brief <owner/repo> <pr-number> [--deeper] [--post]",
+  "Usage: pr-review-agent brief <owner/repo> <pr-number> [--deeper]",
   "   or: pr-review-agent review <owner/repo> <pr-number> [--post]",
   "   or: pr-review-agent fix <owner/repo> <pr-number> [--dry-run] [--include-resolved]",
 ].join("\n");
@@ -83,12 +82,17 @@ export function parseArgs(argv: string[]): CliArgs {
       ownerRepo,
       prNumberRaw,
     );
+    // Refused rather than ignored: a person who passes it expects a post.
+    if (rest.includes("--post")) {
+      throw new Error(
+        `A briefing is never posted to GitHub (only a review is). Drop --post to write the briefing to a file. ${USAGE}`,
+      );
+    }
     return {
       command: "brief",
       owner,
       repo,
       prNumber,
-      post: rest.includes("--post"),
       deeper: rest.includes("--deeper"),
     };
   }

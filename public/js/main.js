@@ -9,12 +9,15 @@ import {
 } from "./resultsView.js";
 import { applyStep, resetActivity, startActivity } from "./activity.js";
 import { hidePrCard, showPrCard, showPrLoading } from "./prCard.js";
-import { clearBriefing, showBriefing, startBriefing } from "./briefing.js";
 import {
-  clearCodeReview,
-  showCodeReview,
-  startCodeReview,
-} from "./codeReview.js";
+  clearPrReview,
+  onBriefing,
+  onBriefingFailed,
+  onReviewData,
+  onReviewDone,
+  onStopped,
+  startPrReview,
+} from "./prReview.js";
 
 const form = document.getElementById("fix-form");
 const runButton = document.getElementById("run-button");
@@ -25,8 +28,6 @@ const dryRunInput = document.getElementById("dryRun");
 const dryRunRow = document.getElementById("dryrun-row");
 const resolvedInput = document.getElementById("includeResolved");
 const resolvedRow = document.getElementById("resolved-row");
-const deeperRow = document.getElementById("deeper-row");
-const deeperInput = document.getElementById("deeperBrief");
 const statusEl = document.getElementById("status");
 const statusText = document.getElementById("status-text");
 const modeInputs = document.querySelectorAll('input[name="mode"]');
@@ -44,8 +45,7 @@ function errorBoxReset() {
 function resetPanels() {
   resetActivity();
   clearLog();
-  clearBriefing();
-  clearCodeReview();
+  clearPrReview();
   resetResults();
 }
 
@@ -65,7 +65,6 @@ function setBusy(busy) {
 // What each mode is called on the button, while idle and while running.
 const MODES = {
   fix: { label: "Fix comments", busy: "Addressing..." },
-  brief: { label: "Brief PR", busy: "Briefing..." },
   review: { label: "Review PR", busy: "Reviewing..." },
 };
 
@@ -76,11 +75,9 @@ function currentMode() {
 function syncMode() {
   const mode = currentMode();
   runButton.textContent = MODES[mode].label;
-  // Only Fix comments writes anything; Brief and Review are read-only.
+  // Only Fix comments writes anything; Review is read-only.
   dryRunRow.hidden = mode !== "fix";
   resolvedRow.hidden = mode !== "fix";
-  // Quick is the default; deeper only applies to the briefing.
-  deeperRow.hidden = mode !== "brief";
 }
 
 for (const input of modeInputs) input.addEventListener("change", syncMode);
@@ -123,37 +120,36 @@ const ACTIONS = {
     }
   },
 
-  async brief(signal) {
-    startBriefing();
-    const markdown = await streamRequest(
-      "/brief",
-      {
-        prUrl: prUrlInput.value,
-        mode: deeperInput.checked ? "deeper" : "quick",
-      },
-      appendLine,
-      signal,
-      { onStep: applyStep },
-    );
-    if (signal.aborted) appendLine("warn", "Stopped.");
-    else if (markdown) await showBriefing(markdown);
-  },
-
   async review(signal) {
-    startCodeReview();
-    // The structured review arrives on its own line, just before the Markdown
-    // result; the panel needs both (cards from the first, download from the
-    // second), so it is held here until the stream ends.
+    startPrReview();
+    // The structured review arrives before the Markdown result: first with
+    // every finding unchecked, then checked. The Markdown (the download) is
+    // only there once the run has finished.
     let data = null;
-    const markdown = await streamRequest(
-      "/review",
-      { prUrl: prUrlInput.value },
-      appendLine,
-      signal,
-      { onData: (d) => (data = d), onStep: applyStep },
-    );
-    if (signal.aborted) appendLine("warn", "Stopped.");
-    else if (data && markdown) showCodeReview(data, markdown);
+    let markdown;
+    try {
+      markdown = await streamRequest(
+        "/review",
+        { prUrl: prUrlInput.value },
+        appendLine,
+        signal,
+        {
+          onStep: applyStep,
+          onBriefing,
+          onBriefingFailed,
+          onData: (d) => {
+            data = d;
+            onReviewData(d);
+          },
+        },
+      );
+    } catch (err) {
+      if (!isAbortError(err) && !signal.aborted) throw err;
+    }
+    if (signal.aborted) {
+      appendLine("warn", "Stopped.");
+      onStopped();
+    } else if (data && markdown) onReviewDone(data, markdown);
   },
 };
 

@@ -5,13 +5,11 @@ import express, { type Response } from "express";
 import { loadSecrets } from "./secrets.js";
 import { parsePrUrl, type PrReference } from "./prUrl.js";
 import { runFix } from "./fixRun.js";
-import { runBrief } from "./briefRun.js";
-import { parseBriefMode } from "./briefing/generateBriefing.js";
 import { z } from "zod";
-import { runCodeReview } from "./codeReviewRun.js";
+import { runPrReview } from "./prReviewRun.js";
 import { postableReviewSchema } from "./codeReview/postReview.js";
 import { createOctokit } from "./github/client.js";
-import { postBriefing, postReview } from "./prActions.js";
+import { postReview } from "./prActions.js";
 import { fetchPrSummary } from "./prSummary.js";
 import { startNdjson, streamRun } from "./streamRun.js";
 import { classifyLogLine } from "./logFormat.js";
@@ -191,11 +189,14 @@ app.post("/fix", async (req, res) => {
   });
 });
 
-// A Code Review. The Markdown rides as the {kind: "result"} line, for the
-// download; the structured review rides as one {kind: "data"} line, which is
-// what the Findings panel renders from (and what posting needs), rather than
-// the UI re-parsing Markdown. Not saved as a run record yet -- see the map's
-// note on Findings joining the run record.
+// A PR Review: the briefing, then the Code Review. It streams in the order
+// things finish. The briefing rides as one {kind: "briefing"} line (or a
+// {kind: "briefing-error"} one when it failed twice). The review's structured
+// data rides as {kind: "data"} lines: first the Findings all marked unchecked
+// (sent before Verification starts, so a Stop keeps them), then the checked
+// ones. The Code Review's Markdown comes last as the {kind: "result"} line,
+// for the download. Saved as a Run Record of kind "briefing" (the briefing
+// only, as before); the Findings are not saved yet.
 app.post("/review", async (req, res) => {
   const { prUrl } = req.body as { prUrl?: string };
   const pr = parseOrReject(res, prUrl ?? "");
@@ -205,13 +206,21 @@ app.post("/review", async (req, res) => {
     res,
     action: "review",
     pr,
-    run: async ({ log, step, send, abortController }) => {
-      const result = await runCodeReview({
+    record: { kind: "briefing", store: runStore, runsMax },
+    run: async ({ log, step, send, recorder, abortController }) => {
+      const result = await runPrReview({
         ...pr,
         onStep: step,
         githubToken: secrets.githubToken,
         log,
         abortController,
+        onBriefing: (markdown) => {
+          recorder?.setBriefing(markdown);
+          send({ kind: "briefing", text: markdown });
+        },
+        onBriefingFailed: (message) =>
+          send({ kind: "briefing-error", text: message }),
+        onDraft: (draft) => send({ kind: "data", data: draft }),
       });
       send({
         kind: "data",
@@ -269,59 +278,6 @@ app.post("/review/post", async (req, res) => {
       commentCount: result.commentCount,
       alreadyPosted: result.alreadyPosted,
     });
-  } catch (error) {
-    res.status(500).json({ error: formatError(error) });
-  }
-});
-
-app.post("/brief", async (req, res) => {
-  const { prUrl, mode: rawMode } = req.body as {
-    prUrl?: string;
-    mode?: unknown;
-  };
-  const pr = parseOrReject(res, prUrl ?? "");
-  if (!pr) return;
-  // Absent means quick; anything else that is not a known mode is refused
-  // rather than silently run as quick.
-  const mode = rawMode === undefined ? "quick" : parseBriefMode(rawMode);
-  if (!mode) {
-    res.status(400).json({ error: 'mode must be "quick" or "deeper".' });
-    return;
-  }
-
-  // The rendered Markdown rides as one {kind: "result"} line rather than a
-  // separate response, so this stays a single request like the others.
-  await streamRun({
-    res,
-    action: "brief",
-    pr,
-    record: { kind: "briefing", store: runStore, runsMax },
-    run: async ({ log, step, send, recorder, abortController }) => {
-      const markdown = await runBrief({
-        ...pr,
-        mode,
-        onStep: step,
-        githubToken: secrets.githubToken,
-        log,
-        abortController,
-      });
-      recorder?.setBriefing(markdown);
-      send({ kind: "result", text: markdown });
-    },
-  });
-});
-
-app.post("/brief/post", async (req, res) => {
-  const { prUrl, markdown } = req.body as { prUrl?: string; markdown?: string };
-  const pr = parseOrReject(res, prUrl ?? "");
-  if (!pr) return;
-  if (!markdown) {
-    res.status(400).json({ error: "Missing markdown to post." });
-    return;
-  }
-
-  try {
-    res.json(await postBriefing(secrets.githubToken, pr, markdown));
   } catch (error) {
     res.status(500).json({ error: formatError(error) });
   }
