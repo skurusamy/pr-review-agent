@@ -12,10 +12,10 @@ import {
   it,
   vi,
 } from "vitest";
-import { runCodeReview } from "./codeReviewRun.js";
+import { runPrReview } from "./prReviewRun.js";
 import { postCodeReviewAsPending } from "./codeReview/postReview.js";
 
-vi.mock("./codeReviewRun.js", () => ({ runCodeReview: vi.fn() }));
+vi.mock("./prReviewRun.js", () => ({ runPrReview: vi.fn() }));
 // The request schema stays real (it is what /review/post validates with);
 // only the GitHub write is faked.
 vi.mock("./codeReview/postReview.js", async (importOriginal) => ({
@@ -47,7 +47,7 @@ afterAll(async () => {
 // Braces matter: a function RETURNED from beforeEach is run as a teardown
 // hook, and mockReset() returns the mock itself.
 beforeEach(() => {
-  vi.mocked(runCodeReview).mockReset();
+  vi.mocked(runPrReview).mockReset();
   vi.mocked(postCodeReviewAsPending).mockReset();
 });
 
@@ -78,37 +78,58 @@ const review = {
 };
 
 describe("POST /review", () => {
-  it("streams progress, then the structured review, then the markdown, then done", async () => {
-    vi.mocked(runCodeReview).mockImplementation(async ({ log }) => {
-      log?.("Fetching PR context for acme/widgets#7...");
-      log?.("  [thinking] looking at it");
-      return {
-        title: "My PR",
-        prUrl: PR,
-        headSha: "abc1234",
-        review,
-        markdown: "# Code Review",
-      };
-    });
+  it("streams the run id, progress, the briefing, the unchecked draft, the checked review, the markdown, then done", async () => {
+    vi.mocked(runPrReview).mockImplementation(
+      async ({ log, onBriefing, onDraft }) => {
+        log?.("Fetching PR context for acme/widgets#7...");
+        log?.("  [thinking] looking at it");
+        onBriefing?.("# PR Briefing: My PR");
+        const draft = { title: "My PR", prUrl: PR, headSha: "abc1234", review };
+        onDraft?.(draft);
+        return { ...draft, markdown: "# Code Review" };
+      },
+    );
 
     const response = await post({ prUrl: PR });
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toContain("ndjson");
 
+    const data = { title: "My PR", prUrl: PR, headSha: "abc1234", review };
     expect(await lines(response)).toEqual([
+      { kind: "run", text: expect.any(String) },
       { kind: "info", text: "Fetching PR context for acme/widgets#7..." },
       { kind: "thinking", text: "[thinking] looking at it" },
-      {
-        kind: "data",
-        data: { title: "My PR", prUrl: PR, headSha: "abc1234", review },
-      },
+      { kind: "briefing", text: "# PR Briefing: My PR" },
+      { kind: "data", data },
+      { kind: "data", data },
       { kind: "result", text: "# Code Review" },
       { kind: "done", text: "" },
     ]);
   });
 
+  it("reports a failed briefing on its own line and still returns the review", async () => {
+    vi.mocked(runPrReview).mockImplementation(async ({ onBriefingFailed }) => {
+      onBriefingFailed?.("model unavailable");
+      return {
+        title: "t",
+        prUrl: PR,
+        headSha: "abc1234",
+        review,
+        markdown: "m",
+      };
+    });
+
+    const out = await lines(await post({ prUrl: PR }));
+    expect(out).toContainEqual({
+      kind: "briefing-error",
+      text: "model unavailable",
+    });
+    expect(out).toContainEqual({ kind: "result", text: "m" });
+    expect(out.at(-1)).toEqual({ kind: "done", text: "" });
+  });
+
   it("passes the parsed PR, the token and an abort controller to the run", async () => {
-    vi.mocked(runCodeReview).mockResolvedValue({
+    vi.mocked(runPrReview).mockResolvedValue({
       title: "t",
       prUrl: PR,
       headSha: "abc1234",
@@ -117,7 +138,7 @@ describe("POST /review", () => {
     });
     await (await post({ prUrl: PR })).text();
 
-    const options = vi.mocked(runCodeReview).mock.calls[0]![0];
+    const options = vi.mocked(runPrReview).mock.calls[0]![0];
     expect(options).toMatchObject({
       owner: "acme",
       repo: "widgets",
@@ -128,9 +149,12 @@ describe("POST /review", () => {
   });
 
   it("reports a failed run as an in-band error line", async () => {
-    vi.mocked(runCodeReview).mockRejectedValue(new Error("Not Found"));
+    vi.mocked(runPrReview).mockRejectedValue(new Error("Not Found"));
     const out = await lines(await post({ prUrl: PR }));
-    expect(out).toEqual([{ kind: "error", text: "Not Found" }]);
+    expect(out).toEqual([
+      { kind: "run", text: expect.any(String) },
+      { kind: "error", text: "Not Found" },
+    ]);
   });
 
   it("rejects a bad PR link with a 400 before streaming anything", async () => {
@@ -139,12 +163,12 @@ describe("POST /review", () => {
     expect(((await response.json()) as { error: string }).error).toMatch(
       /PR reference/,
     );
-    expect(runCodeReview).not.toHaveBeenCalled();
+    expect(runPrReview).not.toHaveBeenCalled();
   });
 
   it("aborts the run when the client disconnects", async () => {
     let seen: AbortSignal | undefined;
-    vi.mocked(runCodeReview).mockImplementation(
+    vi.mocked(runPrReview).mockImplementation(
       ({ abortController }) =>
         new Promise((_, reject) => {
           seen = abortController?.signal;

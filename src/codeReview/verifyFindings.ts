@@ -197,6 +197,27 @@ export async function verifyFinding(
 }
 
 /**
+ * The review with every Finding marked `unchecked`: what the page shows while
+ * the verify pass is still running, and what stays on it if the person stops
+ * the run first. Nothing is dropped, and since no Finding is `confirmed` none
+ * goes inline in a posted review, the same as any other unchecked Finding.
+ */
+export function markUnchecked(review: CodeReview): CodeReview {
+  const mark = (f: Finding): Finding => ({
+    ...f,
+    verification: {
+      status: "unchecked",
+      evidence: "the second check had not finished.",
+    },
+  });
+  return {
+    ...review,
+    findings: review.findings.map(mark),
+    unanchored: review.unanchored.map(mark),
+  };
+}
+
+/**
  * Runs the verify pass over a review: the most severe findings first, at most
  * `limit` of them, a few at a time. Every finding comes back with a
  * Verification (the ones past the limit as `unchecked`), none is dropped.

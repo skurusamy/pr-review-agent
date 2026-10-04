@@ -31,13 +31,6 @@ import {
  */
 export type BriefMode = "quick" | "deeper";
 
-export const BRIEF_MODES: readonly BriefMode[] = ["quick", "deeper"];
-
-/** A mode from outside (a request body), or undefined when it is not one. */
-export function parseBriefMode(value: unknown): BriefMode | undefined {
-  return BRIEF_MODES.find((m) => m === value);
-}
-
 export interface ReadingStep {
   path: string;
   why: string;

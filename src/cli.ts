@@ -8,7 +8,6 @@ import { runCodeReview } from "./codeReviewRun.js";
 import {
   describePostedReview,
   markdownFileName,
-  postBriefing,
   postReview,
 } from "./prActions.js";
 import { colorizeLine } from "./cliLog.js";
@@ -73,11 +72,6 @@ async function main(): Promise<void> {
   const fileName = markdownFileName("pr-briefing", pr);
   await writeFile(fileName, markdown, "utf-8");
   log(`\nWrote ${fileName}`);
-
-  if (args.post) {
-    const { url } = await postBriefing(githubToken, pr, markdown);
-    log(`Posted: ${url}`);
-  }
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

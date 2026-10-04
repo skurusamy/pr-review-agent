@@ -5,11 +5,12 @@ import type { CodeReview, Finding } from "./generateReview.js";
 import {
   buildCheckPrompt,
   buildCheckQueryOptions,
+  markUnchecked,
   parseCheckInput,
   verifyFinding,
   verifyFindings,
 } from "./verifyFindings.js";
-import type { Verification } from "./verification.js";
+import { postsInline, type Verification } from "./verification.js";
 
 vi.mock("@anthropic-ai/claude-agent-sdk", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@anthropic-ai/claude-agent-sdk")>()),
@@ -310,5 +311,29 @@ describe("verifyFinding", () => {
     await expect(
       verifyFinding(context, "/tmp/x", finding(), quiet),
     ).rejects.toThrow("network down");
+  });
+});
+
+describe("markUnchecked", () => {
+  it("marks every Finding unchecked, anchored or not, and drops none", () => {
+    const marked = markUnchecked(
+      review([finding(), finding({ line: 12 })], [finding({ line: 99 })]),
+    );
+    expect(marked.findings).toHaveLength(2);
+    expect(marked.unanchored).toHaveLength(1);
+    for (const f of [...marked.findings, ...marked.unanchored]) {
+      expect(f.verification?.status).toBe("unchecked");
+    }
+  });
+
+  it("leaves nothing that would go inline in a posted review", () => {
+    const marked = markUnchecked(review([finding()]));
+    expect(postsInline(marked.findings[0]!)).toBe(false);
+  });
+
+  it("does not change the review it is given", () => {
+    const original = review([finding()]);
+    markUnchecked(original);
+    expect(original.findings[0]!.verification).toBeUndefined();
   });
 });

@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { formatBriefingMarkdown } from "./formatBriefing.js";
+import {
+  formatBriefingForReview,
+  formatBriefingMarkdown,
+} from "./formatBriefing.js";
 import type { Briefing } from "./generateBriefing.js";
 
 function makeBriefing(overrides: Partial<Briefing> = {}): Briefing {
@@ -109,5 +112,29 @@ describe("formatBriefingMarkdown for a deeper briefing", () => {
     expect(
       formatBriefingMarkdown("t", "u", makeBriefing({ readingOrder: [] })),
     ).not.toContain("Where to start reading");
+  });
+});
+
+describe("formatBriefingForReview", () => {
+  it("keeps what the briefing judged and leaves out what the review already has", () => {
+    const text = formatBriefingForReview(
+      makeBriefing({
+        howItFits: "Called by the list view.",
+        readingOrder: [{ path: "src/page.ts", why: "the change" }],
+      }),
+    );
+    expect(text).toContain("Adjusts the pagination loop bound.");
+    expect(text).toContain("Called by the list view.");
+    expect(text).toContain("1. src/page.ts: the change");
+    expect(text).toContain("- Check the last-page edge case");
+    expect(text).not.toContain("flowchart");
+    expect(text).not.toContain("(+2 -1)");
+  });
+
+  it("skips the sections a briefing did not have", () => {
+    const text = formatBriefingForReview(makeBriefing({ risks: [] }));
+    expect(text).not.toContain("How it fits in");
+    expect(text).not.toContain("Where to start reading");
+    expect(text).not.toContain("Risks it named");
   });
 });

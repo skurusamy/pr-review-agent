@@ -1,8 +1,9 @@
+import type { Octokit } from "octokit";
 import { createOctokit } from "./github/client.js";
 import { checkoutPullRequestHead, withCheckout } from "./github/checkout.js";
 import { verifyFinding, verifyFindings } from "./codeReview/verifyFindings.js";
-import { prUrlOf } from "./prUrl.js";
-import { fetchPrContext } from "./briefing/fetchPrContext.js";
+import { prUrlOf, type PrReference } from "./prUrl.js";
+import { fetchPrContext, type PrContext } from "./briefing/fetchPrContext.js";
 import { fetchRepoRules } from "./codeReview/repoRules.js";
 import { parseChangedFiles } from "./briefing/changedFilesTree.js";
 import { fetchReviewThreads } from "./github/reviewComments.js";
@@ -36,31 +37,23 @@ export interface CodeReviewResult {
 }
 
 /**
- * One Code Review: fetch the PR's context, check out its head commit
- * read-only, and have the model review it. Returns both the structured
- * review (the posting step needs the Findings themselves) and its rendered
- * Markdown (what the CLI prints and the UI/file show).
+ * Everything a Code Review (and a PR Review's briefing) is told about the PR,
+ * gathered in plain code before any model session starts: the PR's own text
+ * and diff, the same-repo issues it links to, the repo's own rules and the
+ * inline threads already on it. Shared so the two runs cannot drift apart on
+ * what the model is shown.
  */
-export async function runCodeReview(
-  options: CodeReviewRunOptions,
-): Promise<CodeReviewResult> {
-  const {
-    owner,
-    repo,
-    prNumber,
-    githubToken,
-    log = console.log,
-    abortController,
-    onStep = () => {},
-  } = options;
-  const octokit = createOctokit(githubToken);
-
-  onStep("Fetching pull request");
+export async function gatherReviewContext(
+  octokit: Octokit,
+  pr: PrReference,
+  log: (line: string) => void,
+): Promise<PrContext> {
+  const { owner, repo, prNumber } = pr;
   log(`Fetching PR context for ${owner}/${repo}#${prNumber}...`);
   const context = await fetchPrContext(octokit, owner, repo, prNumber, log);
 
-  // Same lookup as Brief PR: what the PR was asked to do is the yardstick
-  // for "drift", and it is read here in plain code, not by the model.
+  // What the PR was asked to do is the yardstick for "drift", and it is read
+  // here in plain code, not by the model.
   context.linkedIssues = await fetchLinkedIssuesOfPr(
     octokit,
     { owner, repo, prNumber },
@@ -89,9 +82,8 @@ export async function runCodeReview(
     }
   }
 
-  onStep("Checking out the branch");
   // Points already raised inline, so the review builds on them instead of
-  // repeating them. Read here in plain code, like the linked issues.
+  // repeating them.
   log("  Fetching existing review threads...");
   context.reviewThreads = await fetchReviewThreads(
     octokit,
@@ -99,7 +91,37 @@ export async function runCodeReview(
     repo,
     prNumber,
   );
+  return context;
+}
 
+/**
+ * One Code Review: fetch the PR's context, check out its head commit
+ * read-only, and have the model review it. Returns both the structured
+ * review (the posting step needs the Findings themselves) and its rendered
+ * Markdown (what the CLI prints and the UI/file show).
+ */
+export async function runCodeReview(
+  options: CodeReviewRunOptions,
+): Promise<CodeReviewResult> {
+  const {
+    owner,
+    repo,
+    prNumber,
+    githubToken,
+    log = console.log,
+    abortController,
+    onStep = () => {},
+  } = options;
+  const octokit = createOctokit(githubToken);
+
+  onStep("Fetching pull request");
+  const context = await gatherReviewContext(
+    octokit,
+    { owner, repo, prNumber },
+    log,
+  );
+
+  onStep("Checking out the branch");
   log("Checking out the PR's head commit...");
   return withCheckout(
     () =>
@@ -115,17 +137,13 @@ export async function runCodeReview(
         log,
         abortController,
       );
-
-      // A second, fresh session tries to disprove each finding before it is
-      // shown as standing. Skipped when there is nothing to check.
-      if (reviewed.findings.length + reviewed.unanchored.length > 0) {
-        onStep("Checking the findings");
-      }
-      const review = await verifyFindings(
+      const review = await verifyReview(
+        context,
+        checkout.dir,
         reviewed,
-        (finding) =>
-          verifyFinding(context, checkout.dir, finding, log, abortController),
-        { log },
+        log,
+        abortController,
+        onStep,
       );
 
       const prUrl = prUrlOf(owner, repo, prNumber);
@@ -137,5 +155,30 @@ export async function runCodeReview(
         markdown: formatCodeReviewMarkdown(context.title, prUrl, review),
       };
     },
+  );
+}
+
+/**
+ * The second, fresh session that tries to disprove each Finding before it is
+ * shown as standing. Skipped (no step shown) when there is nothing to check.
+ * It is never given a briefing: it is the independent check on a review that
+ * may have leaned on one.
+ */
+export function verifyReview(
+  context: PrContext,
+  checkoutDir: string,
+  reviewed: CodeReview,
+  log: (line: string) => void,
+  abortController: AbortController | undefined,
+  onStep: (label: string) => void,
+): Promise<CodeReview> {
+  if (reviewed.findings.length + reviewed.unanchored.length > 0) {
+    onStep("Checking the findings");
+  }
+  return verifyFindings(
+    reviewed,
+    (finding) =>
+      verifyFinding(context, checkoutDir, finding, log, abortController),
+    { log },
   );
 }

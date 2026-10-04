@@ -51,17 +51,13 @@
       </p>
       <div class="modes" role="radiogroup" aria-label="Mode">
         <label class="mode">
-          <input type="radio" name="mode" value="brief" />
-          <span class="mode-body">
-            <strong>Brief PR</strong>
-            <span>Understand what changed with a clear summary.</span>
-          </span>
-        </label>
-        <label class="mode">
           <input type="radio" name="mode" value="review" />
           <span class="mode-body">
             <strong>Review PR</strong>
-            <span>Find potential bugs, risks and improvement suggestions.</span>
+            <span
+              >Understand what changed, then find potential bugs, risks and
+              improvements.</span
+            >
           </span>
         </label>
         <label class="mode">
@@ -81,17 +77,6 @@
         <span class="switch-text">
           <strong>Dry run</strong>
           <span>Compute everything, but don't push or write to GitHub.</span>
-        </span>
-      </label>
-      <label id="deeper-row" class="switch">
-        <input type="checkbox" id="deeperBrief" name="deeperBrief" />
-        <span class="switch-track"></span>
-        <span class="switch-text">
-          <strong>Deeper briefing</strong>
-          <span
-            >Also reads the code around the change. Takes a few minutes instead
-            of seconds.</span
-          >
         </span>
       </label>
       <label id="resolved-row" class="switch">
@@ -131,7 +116,9 @@
     </div>
     <div id="results-summary" hidden></div>
     <div id="output" hidden></div>
-    <div id="briefing" hidden></div>
-    <div id="code-review" hidden></div>
+    <div id="pr-review" hidden>
+      <div id="briefing" hidden></div>
+      <div id="code-review" hidden></div>
+    </div>
   </body>
 </html>
